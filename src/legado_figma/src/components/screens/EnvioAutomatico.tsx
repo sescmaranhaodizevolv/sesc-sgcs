@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
 import { CheckCircle, Clock, Ban, Send, Eye, FileText, Settings, Search, Info, AlertCircle, DollarSign, Edit } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { getBadgeMappingForStatus } from '../../lib/badge-mappings';
 
 export function EnvioAutomatico() {

@@ -11,7 +11,7 @@ import { Label } from '../ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Plus, Search, Building2, FileText, Upload, Eye, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FileInput } from '../ui/file-input';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 type FornecedorStatus = 'Ativo' | 'Inativo';
 

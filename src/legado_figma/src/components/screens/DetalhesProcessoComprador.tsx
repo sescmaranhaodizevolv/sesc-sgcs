@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from '../ui/alert';
 import { getBadgeMappingForStatus, getBadgeMappingForTipoDocumento } from '../../lib/badge-mappings';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { FileInput } from '../ui/file-input';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface DetalhesProcessoCompradorProps {
   processoId?: string;

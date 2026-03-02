@@ -33,7 +33,7 @@ import { DetalheRequisicao } from './components/screens/DetalheRequisicao';
 import { CentralSuporte } from './components/screens/CentralSuporte';
 import { ConfiguracoesRequisitante } from './components/screens/ConfiguracoesRequisitante';
 import { AuditoriaRequisitante } from './components/screens/AuditoriaRequisitante';
-import { Toaster } from 'sonner@2.0.3';
+import { Toaster } from 'sonner';
 import { toast } from './lib/toast-helpers';
 import { NotificationProvider } from './contexts/NotificationContext';
 

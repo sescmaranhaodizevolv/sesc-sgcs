@@ -219,7 +219,9 @@ function RealinhamentoPrecos() {
     }
   };
 
-  const empresas = [...new Set(realinhamentosItemizados.map(r => r.empresa))];
+  const empresas = realinhamentosItemizados
+    .map((r) => r.empresa)
+    .filter((empresa, index, array) => array.indexOf(empresa) === index);
 
   const filteredRealinhamentos = realinhamentosItemizados.filter(realinhamento => {
     const matchesSearch = searchTerm === '' || 

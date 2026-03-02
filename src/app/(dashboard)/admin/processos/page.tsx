@@ -1185,7 +1185,7 @@ function Processos({ currentProfile = 'admin' }: ProcessosProps) {
                             </BadgeNew>
                           </TableCell>
                           <TableCell>
-                            <BadgeNew intention="warning" weight="bold" size="md">
+                            <BadgeNew intent="warning" weight="heavy" size="md">
                               Aguardando Configuração
                             </BadgeNew>
                           </TableCell>
@@ -1325,9 +1325,7 @@ function Processos({ currentProfile = 'admin' }: ProcessosProps) {
                               size="sm"
                               className="bg-[#003366] hover:bg-[#002244] text-white"
                               onClick={() => {
-                                toast.success('Processo criado com sucesso!', {
-                                  description: `Processo criado a partir da requisição ${requisicao.id}`
-                                });
+                                toast.success(`Processo criado com sucesso! Processo criado a partir da requisição ${requisicao.id}.`);
                               }}
                             >
                               <FileText size={16} className="mr-2" />
@@ -1547,11 +1545,12 @@ function Processos({ currentProfile = 'admin' }: ProcessosProps) {
                                 </SelectContent>
                               </Select>
                               {processo.status === 'Devolvido ao Administrador' && processo.justificativaDevolucao && (
-                                <Info 
-                                  size={16} 
-                                  className="text-yellow-600 cursor-help" 
-                                  title="Processo devolvido pelo comprador. Clique em Ver Detalhes para ler a justificativa."
-                                />
+                                <span title="Processo devolvido pelo comprador. Clique em Ver Detalhes para ler a justificativa.">
+                                  <Info
+                                    size={16}
+                                    className="text-yellow-600 cursor-help"
+                                  />
+                                </span>
                               )}
                             </div>
                           </TableCell>
@@ -3484,4 +3483,3 @@ export default function AdminProcessosPage() {
     </div>
   );
 }
-

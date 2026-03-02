@@ -123,7 +123,9 @@ function HistoricoDesistencias() {
     }
   };
 
-  const empresas = [...new Set(desistencias.map(d => d.empresa))];
+  const empresas = desistencias
+    .map((d) => d.empresa)
+    .filter((empresa, index, array) => array.indexOf(empresa) === index);
 
   const filteredDesistencias = desistencias.filter(desistencia => {
     const matchesSearch = desistencia.empresa.toLowerCase().includes(searchTerm.toLowerCase()) ||

@@ -28,7 +28,7 @@ export default function MinhasRequisicoesPage() {
             statusFilter === "todos" ||
             (statusFilter === "em-analise" && r.status === "Em Análise") ||
             (statusFilter === "aguardando-atribuicao" &&
-                (r.status === "Aguardando Atribuição" || r.status === "Em Cotação")) ||
+                (r.status === "Aguardando Documentação" || r.status === "Em Cotação")) ||
             (statusFilter === "aprovado" && r.status === "Aprovado") ||
             (statusFilter === "devolvido-requisitante" &&
                 (r.status === "Devolvido ao Requisitante" || r.status === "RC devolvida para ajuste")) ||

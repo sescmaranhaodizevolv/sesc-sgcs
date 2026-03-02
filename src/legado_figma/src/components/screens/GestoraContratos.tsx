@@ -10,7 +10,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Calendar, Clock, AlertTriangle, CheckCircle2, XCircle, Search, FileText, Edit, Save, RotateCcw, CalendarDays, AlertCircle } from 'lucide-react';
 import { getBadgeMappingForStatus } from '../../lib/badge-mappings';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ComboboxFornecedores } from '../ui/combobox-fornecedores';
 import { fornecedoresComCNPJ, prorrogacoes } from '../../lib/dados-sistema';
 

@@ -134,6 +134,13 @@ export function CentralDocumentos() {
     }
   ];
 
+  const empresas = documentos
+    .map((d) => d.empresa)
+    .filter((empresa, index, array) => array.indexOf(empresa) === index);
+  const processos = documentos
+    .map((d) => d.processo)
+    .filter((processo, index, array) => array.indexOf(processo) === index);
+
   const estatisticas = {
     totalDocumentos: documentos.length,
     tamanhoTotal: documentos.reduce((sum, doc) => {
@@ -147,11 +154,9 @@ export function CentralDocumentos() {
       'Desistência': documentos.filter(d => d.tipo === 'Desistência').length
     },
     uploadsHoje: 2,
-    processos: [...new Set(documentos.map(d => d.processo))].length
+    processos: processos.length
   };
 
-  const empresas = [...new Set(documentos.map(d => d.empresa))];
-  const processos = [...new Set(documentos.map(d => d.processo))];
   const tipos = ['Notificação', 'Aditivo', 'Desistência', 'Termo Homologado'];
 
   // Filtro para documentos homologados
@@ -557,10 +562,9 @@ export function CentralDocumentos() {
               </div>
               ) : (
                 <EmptyState
-                  icon={FolderOpen}
+                  icon={<FolderOpen size={48} />}
                   title="Nenhum documento encontrado"
                   description="Tente ajustar os filtros de busca ou faça o upload de novos documentos."
-                  variant="compact"
                 />
               )}
             </CardContent>
