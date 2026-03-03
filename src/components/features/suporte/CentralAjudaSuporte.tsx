@@ -1697,12 +1697,10 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                   <HelpCircle size={20} className="text-[#003366]" />
                   Perguntas Frequentes (FAQ)
                 </CardTitle>
-                {currentProfile !== 'requisitante' && (
-                  <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setIsNovoFaqOpen(true)}>
-                    <Plus size={16} className="mr-2" />
-                    Cadastrar FAQ
-                  </Button>
-                )}
+                <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setIsNovoFaqOpen(true)}>
+                  <Plus size={16} className="mr-2" />
+                  Cadastrar FAQ
+                </Button>
               </div>
             </CardHeader>
             <Dialog open={isNovoFaqOpen} onOpenChange={setIsNovoFaqOpen}>
