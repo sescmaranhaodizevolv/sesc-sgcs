@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart3, Calendar, DollarSign, FileCheck, FileSpreadsheet, FileText, Filter } from "lucide-react";
+import { BarChart3, Calendar, DollarSign, FileSpreadsheet, FileText, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ type TipoRelatorio =
   | "penalidades"
   | "prorrogacoes"
   | "fornecedores"
-  | "contratos"
   | "trps";
 
 const dadosProcessos = [
@@ -53,13 +52,6 @@ const dadosProrrogacoes = [
   { id: 401, empresa: "Empresa ABC Ltda", processo: "CONT-2023-045", dataVencimentoOriginal: "30/03/2024", novaDataVencimento: "30/09/2024", prazoAdicional: "6 meses", dataSolicitacao: "10/02/2024", justificativa: "Continuidade do serviço essencial", status: "Aprovada" },
   { id: 402, empresa: "Tecnologia GHI Ltda", processo: "CONT-2023-032", dataVencimentoOriginal: "15/04/2024", novaDataVencimento: "15/10/2024", prazoAdicional: "6 meses", dataSolicitacao: "20/02/2024", justificativa: "Necessidade de manutenção contínua", status: "Aprovada" },
   { id: 403, empresa: "Fornecedor XYZ S.A", processo: "CONT-2024-001", dataVencimentoOriginal: "30/05/2024", novaDataVencimento: "30/08/2024", prazoAdicional: "3 meses", dataSolicitacao: "05/03/2024", justificativa: "Processo licitatório substituto em andamento", status: "Em Análise" },
-];
-
-const dadosContratos = [
-  { id: 501, numeroContrato: "CONT-2024-001", empresa: "Empresa ABC Ltda", objeto: "Fornecimento de Material de Escritório", valor: "R$ 125.000,00", dataInicio: "01/01/2024", dataTermino: "31/12/2024", status: "Ativo", tipo: "Fornecimento" },
-  { id: 502, numeroContrato: "CONT-2024-002", empresa: "Tecnologia GHI Ltda", objeto: "Manutenção de Sistema de TI", valor: "R$ 210.000,00", dataInicio: "15/01/2024", dataTermino: "15/01/2025", status: "Ativo", tipo: "Serviço" },
-  { id: 503, numeroContrato: "CONT-2023-045", empresa: "Fornecedor XYZ S.A", objeto: "Limpeza e Conservação", valor: "R$ 89.500,00", dataInicio: "01/06/2023", dataTermino: "31/05/2024", status: "Ativo", tipo: "Serviço" },
-  { id: 504, numeroContrato: "CONT-2023-032", empresa: "Serviços DEF Eireli", objeto: "Segurança Patrimonial", valor: "R$ 156.000,00", dataInicio: "01/03/2023", dataTermino: "28/02/2024", status: "Inativo", tipo: "Serviço" },
 ];
 
 const dadosTRPs = [
@@ -111,7 +103,6 @@ export function RelatoriosModule() {
   const getDataReferencia = (item: Record<string, unknown>, tipo: TipoRelatorio): string | undefined => {
     switch (tipo) {
       case "processos":
-      case "contratos":
         return item.dataInicio as string | undefined;
       case "desistencias":
         return item.dataDesistencia as string | undefined;
@@ -157,7 +148,6 @@ export function RelatoriosModule() {
   const dadosRealinhamentoFiltrados = useMemo(() => filtrarDadosPorTipo(dadosRealinhamento, "realinhamento"), [statusFilter, categoriaFilter, dataInicio, dataFim]);
   const dadosPenalidadesFiltrados = useMemo(() => filtrarDadosPorTipo(dadosPenalidades, "penalidades"), [statusFilter, categoriaFilter, dataInicio, dataFim]);
   const dadosProrrogacoesFiltrados = useMemo(() => filtrarDadosPorTipo(dadosProrrogacoes, "prorrogacoes"), [statusFilter, categoriaFilter, dataInicio, dataFim]);
-  const dadosContratosFiltrados = useMemo(() => filtrarDadosPorTipo(dadosContratos, "contratos"), [statusFilter, categoriaFilter, dataInicio, dataFim]);
   const dadosTRPsFiltrados = useMemo(() => filtrarDadosPorTipo(dadosTRPs, "trps"), [statusFilter, categoriaFilter, dataInicio, dataFim]);
   const dadosFornecedoresFiltrados = useMemo(() => filtrarDadosPorTipo(dadosFornecedores, "fornecedores"), [statusFilter, categoriaFilter, dataInicio, dataFim]);
 
@@ -166,7 +156,6 @@ export function RelatoriosModule() {
   const { items: sortedRealinhamento, requestSort: sortRealinhamento, sortConfig: configRealinhamento } = useTableSort(dadosRealinhamentoFiltrados);
   const { items: sortedPenalidades, requestSort: sortPenalidades, sortConfig: configPenalidades } = useTableSort(dadosPenalidadesFiltrados);
   const { items: sortedProrrogacoes, requestSort: sortProrrogacoes, sortConfig: configProrrogacoes } = useTableSort(dadosProrrogacoesFiltrados);
-  const { items: sortedContratos, requestSort: sortContratos, sortConfig: configContratos } = useTableSort(dadosContratosFiltrados);
   const { items: sortedTRPs, requestSort: sortTRPs, sortConfig: configTRPs } = useTableSort(dadosTRPsFiltrados);
   const { items: sortedFornecedores, requestSort: sortFornecedores, sortConfig: configFornecedores } = useTableSort(dadosFornecedoresFiltrados);
 
@@ -177,7 +166,6 @@ export function RelatoriosModule() {
       totalRealinhamentos: dadosRealinhamento.length,
       totalPenalidades: dadosPenalidades.length,
       totalProrrogacoes: dadosProrrogacoes.length,
-      totalContratos: dadosContratos.length,
       totalTRPs: dadosTRPs.length,
       totalFornecedores: dadosFornecedores.length,
     }),
@@ -190,7 +178,6 @@ export function RelatoriosModule() {
       case "realinhamento": return dadosRealinhamentoFiltrados;
       case "penalidades": return dadosPenalidadesFiltrados;
       case "prorrogacoes": return dadosProrrogacoesFiltrados;
-      case "contratos": return dadosContratosFiltrados;
       case "trps": return dadosTRPsFiltrados;
       case "fornecedores": return dadosFornecedoresFiltrados;
       default: return dadosProcessosFiltrados;
@@ -204,7 +191,6 @@ export function RelatoriosModule() {
     dadosRealinhamentoFiltrados,
     dadosPenalidadesFiltrados,
     dadosProrrogacoesFiltrados,
-    dadosContratosFiltrados,
     dadosTRPsFiltrados,
     dadosFornecedoresFiltrados,
   ]);
@@ -215,7 +201,6 @@ export function RelatoriosModule() {
     realinhamento: "Realinhamento de Preços",
     penalidades: "Penalidades",
     prorrogacoes: "Prorrogações de Processos",
-    contratos: "Contratos",
     trps: "TRPs",
     fornecedores: "Fornecedores",
   }[tipoRelatorio];
@@ -242,9 +227,8 @@ export function RelatoriosModule() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="rounded-lg bg-blue-100 p-2"><BarChart3 className="text-blue-600" size={20} /></div><div><p className="text-2xl text-black">{resumoEstatisticas.totalProcessos}</p><p className="text-sm text-gray-600">Total de Processos</p></div></div></CardContent></Card>
-        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="rounded-lg bg-green-100 p-2"><FileCheck className="text-green-600" size={20} /></div><div><p className="text-2xl text-green-600">{resumoEstatisticas.totalContratos}</p><p className="text-sm text-gray-600">Contratos</p></div></div></CardContent></Card>
         <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="rounded-lg bg-cyan-100 p-2"><FileText className="text-cyan-600" size={20} /></div><div><p className="text-2xl text-cyan-600">{resumoEstatisticas.totalTRPs}</p><p className="text-sm text-gray-600">TRPs</p></div></div></CardContent></Card>
         <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="rounded-lg bg-purple-100 p-2"><DollarSign className="text-purple-600" size={20} /></div><div><p className="text-2xl text-purple-600">{resumoEstatisticas.totalRealinhamentos}</p><p className="text-sm text-gray-600">Realinhamentos</p></div></div></CardContent></Card>
         <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="rounded-lg bg-orange-100 p-2"><Calendar className="text-orange-600" size={20} /></div><div><p className="text-2xl text-orange-600">{resumoEstatisticas.totalProrrogacoes}</p><p className="text-sm text-gray-600">Prorrogações</p></div></div></CardContent></Card>
@@ -264,7 +248,6 @@ export function RelatoriosModule() {
                   <SelectItem value="realinhamento">Realinhamento de Preços</SelectItem>
                   <SelectItem value="penalidades">Penalidades</SelectItem>
                   <SelectItem value="prorrogacoes">Prorrogações de Processos</SelectItem>
-                  <SelectItem value="contratos">Contratos</SelectItem>
                   <SelectItem value="trps">TRPs</SelectItem>
                   <SelectItem value="fornecedores">Fornecedores</SelectItem>
                 </SelectContent>
@@ -280,7 +263,7 @@ export function RelatoriosModule() {
             </div>
           )}
 
-          {(tipoRelatorio === "desistencias" || tipoRelatorio === "realinhamento" || tipoRelatorio === "penalidades" || tipoRelatorio === "prorrogacoes" || tipoRelatorio === "contratos") && (
+          {(tipoRelatorio === "desistencias" || tipoRelatorio === "realinhamento" || tipoRelatorio === "penalidades" || tipoRelatorio === "prorrogacoes") && (
             <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-1.5"><Label>Data Início</Label><Input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} /></div>
               <div className="space-y-1.5"><Label>Data Fim</Label><Input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} /></div>
@@ -458,38 +441,6 @@ export function RelatoriosModule() {
                       <TableCell className="text-gray-600">{i.prazoAdicional}</TableCell>
                       <TableCell className="text-gray-600">{i.dataSolicitacao}</TableCell>
                       <TableCell className="text-gray-600">{i.justificativa}</TableCell>
-                      <TableCell>
-                        <BadgeStatus size="sm" {...getBadgeMappingForStatus(i.status)}>{i.status}</BadgeStatus>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-            {tipoRelatorio === "contratos" && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableTableHead label="Número Contrato" onClick={() => sortContratos("numeroContrato")} currentDirection={configContratos?.key === "numeroContrato" ? configContratos.direction : null} className="sticky left-0 z-10 min-w-[190px] bg-white" />
-                    <SortableTableHead label="Empresa" onClick={() => sortContratos("empresa")} currentDirection={configContratos?.key === "empresa" ? configContratos.direction : null} className="min-w-[220px]" />
-                    <SortableTableHead label="Objeto" onClick={() => sortContratos("objeto")} currentDirection={configContratos?.key === "objeto" ? configContratos.direction : null} className="min-w-[260px]" />
-                    <SortableTableHead label="Tipo" onClick={() => sortContratos("tipo")} currentDirection={configContratos?.key === "tipo" ? configContratos.direction : null} />
-                    <SortableTableHead label="Valor" onClick={() => sortContratos("valor")} currentDirection={configContratos?.key === "valor" ? configContratos.direction : null} />
-                    <SortableTableHead label="Início" onClick={() => sortContratos("dataInicio")} currentDirection={configContratos?.key === "dataInicio" ? configContratos.direction : null} />
-                    <SortableTableHead label="Término" onClick={() => sortContratos("dataTermino")} currentDirection={configContratos?.key === "dataTermino" ? configContratos.direction : null} />
-                    <SortableTableHead label="Status" onClick={() => sortContratos("status")} currentDirection={configContratos?.key === "status" ? configContratos.direction : null} />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedContratos.map((i) => (
-                    <TableRow key={i.id}>
-                      <TableCell className="text-black sticky left-0 z-10 bg-white">{i.numeroContrato}</TableCell>
-                      <TableCell className="text-black">{i.empresa}</TableCell>
-                      <TableCell className="text-gray-600">{i.objeto}</TableCell>
-                      <TableCell className="text-gray-600">{i.tipo}</TableCell>
-                      <TableCell className="text-black">{i.valor}</TableCell>
-                      <TableCell className="text-gray-600">{i.dataInicio}</TableCell>
-                      <TableCell className="text-gray-600">{i.dataTermino}</TableCell>
                       <TableCell>
                         <BadgeStatus size="sm" {...getBadgeMappingForStatus(i.status)}>{i.status}</BadgeStatus>
                       </TableCell>

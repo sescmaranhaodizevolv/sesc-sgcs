@@ -147,7 +147,7 @@ export function ModalEntradaManualRC({
                 </Label>
                 <Input
                   id="numero-rc"
-                  placeholder="Ex: RC-2026-001"
+                  placeholder="Ex: RC 123/2026"
                   value={formData.numeroRC}
                   onChange={(e) => handleChange("numeroRC", e.target.value)}
                   className={errors.numeroRC ? "border-red-500" : ""}

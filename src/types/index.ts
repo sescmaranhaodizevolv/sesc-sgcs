@@ -41,7 +41,6 @@ export type StatusProcesso =
     | "RC devolvida para ajuste"
     | "Devolvido ao Requisitante"
     | "Devolvido"
-    | "Devolvido ao Administrador"
     | "Aguardando Documentação"
     | "Aguardando Próxima Execução"
     | "Enviado Automaticamente"

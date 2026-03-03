@@ -1,9 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Calendar, Edit, FileText, Info, LayoutGrid, List, MoreVertical, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Calendar, Edit, Eye, FileText, Info, LayoutGrid, List, MoreVertical, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { BadgeNew } from "@/components/ui/badge-new";
 import { BadgeStatus } from "@/components/ui/badge-status";
 import { Button } from "@/components/ui/button";
@@ -20,6 +30,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FileInput } from "@/components/ui/file-input";
@@ -32,7 +43,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+} from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
@@ -82,10 +101,26 @@ interface RegistroContrato {
   aditivos: number;
 }
 
+type PrioridadeRequisicao = "Alta" | "Média" | "Baixa";
+
+interface RequisicaoPendente {
+  id: string;
+  requisitante: string;
+  objeto: string;
+  responsavel: string;
+  prioridade: PrioridadeRequisicao;
+  dataRecebimento: string;
+  dataFinalizacao: string;
+  categoria: string;
+  regional: string;
+  valorEstimado: string;
+}
+
 const compradorLogado = "Joao Santos";
 
 const statusAndamentoPadrao = [
   "RC recebida pelo setor de compras",
+  "Aguardando atribuição",
   "Análise de RC",
   "Devolvido ao Requisitante",
   "Em cotação",
@@ -96,6 +131,7 @@ const statusAndamentoPadrao = [
 ] as const;
 
 const statusKanban = [
+  "Aguardando atribuição",
   "Análise de RC",
   "Em cotação",
   "Devolvido ao Requisitante",
@@ -107,6 +143,12 @@ const kanbanColumnConfig: Record<
   (typeof statusKanban)[number],
   { color: string; bgColor: string; borderColor: string; displayName: string }
 > = {
+  "Aguardando atribuição": {
+    color: "text-slate-700",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-300",
+    displayName: "Aguardando atribuição",
+  },
   "Análise de RC": {
     color: "text-blue-700",
     bgColor: "bg-blue-50",
@@ -330,6 +372,79 @@ const contratosListMock: RegistroContrato[] = [
   },
 ];
 
+const compradoresDisponiveis = [
+  "Maria Silva",
+  "Joao Santos",
+  "Ana Costa",
+  "Carlos Oliveira",
+  "Paula Mendes",
+  "Roberto Lima",
+  "Fernanda Alves",
+];
+
+const requisicoesPendentesMock: RequisicaoPendente[] = [
+  {
+    id: "REQ-2026-089",
+    requisitante: "Carlos Alberto - Alimentacao",
+    objeto: "Aquisicao de equipamentos de cozinha industrial",
+    responsavel: "Maria Silva",
+    prioridade: "Alta",
+    dataRecebimento: "10/02/2026",
+    dataFinalizacao: "25/02/2026",
+    categoria: "Equipamentos",
+    regional: "Fortaleza",
+    valorEstimado: "R$ 180.000,00",
+  },
+  {
+    id: "REQ-2026-090",
+    requisitante: "Marina Santos - TI",
+    objeto: "Contratacao de servico de manutencao de rede",
+    responsavel: "Joao Santos",
+    prioridade: "Média",
+    dataRecebimento: "10/02/2026",
+    dataFinalizacao: "20/02/2026",
+    categoria: "Servicos",
+    regional: "Fortaleza",
+    valorEstimado: "R$ 92.000,00",
+  },
+  {
+    id: "REQ-2026-091",
+    requisitante: "Pedro Oliveira - Manutencao",
+    objeto: "Aquisicao de materiais de limpeza",
+    responsavel: "Ana Costa",
+    prioridade: "Baixa",
+    dataRecebimento: "11/02/2026",
+    dataFinalizacao: "18/02/2026",
+    categoria: "Materiais",
+    regional: "Fortaleza",
+    valorEstimado: "R$ 38.000,00",
+  },
+  {
+    id: "REQ-2026-092",
+    requisitante: "Julia Fernandes - Infraestrutura",
+    objeto: "Reforma de salas administrativas",
+    responsavel: "Carlos Oliveira",
+    prioridade: "Alta",
+    dataRecebimento: "11/02/2026",
+    dataFinalizacao: "28/02/2026",
+    categoria: "Obras",
+    regional: "Sobral",
+    valorEstimado: "R$ 240.000,00",
+  },
+  {
+    id: "REQ-2026-093",
+    requisitante: "Roberto Lima - Eventos",
+    objeto: "Locacao de equipamento de som e iluminacao",
+    responsavel: "Paula Mendes",
+    prioridade: "Média",
+    dataRecebimento: "12/02/2026",
+    dataFinalizacao: "23/02/2026",
+    categoria: "Servicos",
+    regional: "Juazeiro do Norte",
+    valorEstimado: "R$ 134.500,00",
+  },
+];
+
 function formatBrDate(day: number, month: number, year: number) {
   return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
 }
@@ -375,10 +490,15 @@ interface ProcessosModuleProps {
 }
 
 export function ProcessosModule({ perfil }: ProcessosModuleProps) {
-  const [activeTab, setActiveTab] = useState("diario");
+  const [activeTab, setActiveTab] = useState(perfil === "admin" ? "requisicoes" : "diario");
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [viewModeConsolidado, setViewModeConsolidado] = useState<ViewMode>("table");
+  const [mostrarApenasMeus, setMostrarApenasMeus] = useState(perfil === "comprador");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
+  const [searchTermRequisicoes, setSearchTermRequisicoes] = useState("");
+  const [prioridadeFilterRequisicoes, setPrioridadeFilterRequisicoes] = useState("todas");
   const [searchTermDiario, setSearchTermDiario] = useState("");
   const [statusFilterDiario, setStatusFilterDiario] = useState("todos");
   const [tipoFilterDiario, setTipoFilterDiario] = useState("todos");
@@ -391,9 +511,29 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
   const [filterTRP, setFilterTRP] = useState("todos");
   const [searchTermContratos, setSearchTermContratos] = useState("");
   const [filterContratos, setFilterContratos] = useState("todos");
-  const [, setIsConfigurarModalOpen] = useState(false);
-  const [, setRequisicaoParaConfigurar] = useState<Processo | null>(null);
+  const [isConfigurarModalOpen, setIsConfigurarModalOpen] = useState(false);
+  const [requisicaoParaConfigurar, setRequisicaoParaConfigurar] = useState<Processo | null>(null);
+  const [isNovaDemandaModalOpen, setIsNovaDemandaModalOpen] = useState(false);
+  const [isNewProcessModalOpen, setIsNewProcessModalOpen] = useState(false);
+  const [isNewConsolidadoModalOpen, setIsNewConsolidadoModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [processoToDelete, setProcessoToDelete] = useState<Processo | null>(null);
+  const [isStatusChangeModalOpen, setIsStatusChangeModalOpen] = useState(false);
+  const [processoParaMudarStatus, setProcessoParaMudarStatus] = useState<Processo | null>(null);
+  const [novoStatus, setNovoStatus] = useState("");
+  const [justificativaStatus, setJustificativaStatus] = useState("");
+  const [isAtribuirModalOpen, setIsAtribuirModalOpen] = useState(false);
+  const [selectedRequisicao, setSelectedRequisicao] = useState<RequisicaoPendente | null>(null);
+  const [compradorSelecionado, setCompradorSelecionado] = useState("");
+  const [dataInicioDistribuicao, setDataInicioDistribuicao] = useState("");
+  const [isPriorityModalOpen, setIsPriorityModalOpen] = useState(false);
+  const [reqParaPrioridade, setReqParaPrioridade] = useState<RequisicaoPendente | null>(null);
+  const [novaPrioridade, setNovaPrioridade] = useState<PrioridadeRequisicao | "">("");
+  const [requisicaoParaDetalhes, setRequisicaoParaDetalhes] = useState<RequisicaoPendente | null>(null);
+  const [bloquearEnvioAutomatico, setBloquearEnvioAutomatico] = useState(false);
+  const [classificacaoPedido, setClassificacaoPedido] = useState("");
 
+  const [requisicoesPendentes] = useState<RequisicaoPendente[]>(requisicoesPendentesMock);
   const [processosDiarios, setProcessosDiarios] = useState<Processo[]>(() => generateMockProcessos());
   const [processosConsolidados, setProcessosConsolidados] = useState<ProcessoConsolidado[]>(processosConsolidadosMock);
   const [trpList] = useState<RegistroTRP[]>(trpListMock);
@@ -412,12 +552,10 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
   const [isAditivoModalOpen, setIsAditivoModalOpen] = useState(false);
   const [isProrrogacaoModalOpen, setIsProrrogacaoModalOpen] = useState(false);
 
-  const processosDiariosPerfil = useMemo(
-    () =>
-      perfil === "admin"
-        ? processosDiarios
-        : processosDiarios.filter((processo) => processo.responsavel === compradorLogado),
-    [perfil, processosDiarios],
+  const processosDiariosPerfil = useMemo(() => processosDiarios, [processosDiarios]);
+  const processosDiariosAtribuidosAoComprador = useMemo(
+    () => processosDiarios.filter((processo) => processo.responsavel === compradorLogado),
+    [processosDiarios],
   );
 
   const filteredProcessosDiarios = useMemo(
@@ -435,10 +573,11 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
         const matchesSearch = haystack.includes(searchTermDiario.toLowerCase());
         const matchesStatus = statusFilterDiario === "todos" || processo.status === statusFilterDiario;
         const matchesTipo = tipoFilterDiario === "todos" || processo.modalidade === tipoFilterDiario;
+        const matchesDono = !mostrarApenasMeus || processo.responsavel === compradorLogado;
 
-        return matchesSearch && matchesStatus && matchesTipo;
+        return matchesSearch && matchesStatus && matchesTipo && matchesDono;
       }),
-    [processosDiariosPerfil, searchTermDiario, statusFilterDiario, tipoFilterDiario],
+    [processosDiariosPerfil, searchTermDiario, statusFilterDiario, tipoFilterDiario, mostrarApenasMeus],
   );
 
   const {
@@ -446,6 +585,45 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
     requestSort: requestSortDiario,
     sortConfig: sortConfigDiario,
   } = useTableSort(filteredProcessosDiarios);
+
+  const totalItemsDiario = sortedProcessosDiarios.length;
+  const totalPagesDiario = Math.max(1, Math.ceil(totalItemsDiario / itemsPerPage));
+  const startIndexDiario = (currentPage - 1) * itemsPerPage;
+  const endIndexDiario = startIndexDiario + itemsPerPage;
+  const paginatedProcessosDiarios = sortedProcessosDiarios.slice(startIndexDiario, endIndexDiario);
+  const displayStartDiario = totalItemsDiario === 0 ? 0 : startIndexDiario + 1;
+  const displayEndDiario = Math.min(endIndexDiario, totalItemsDiario);
+
+  const paginationPagesDiario = useMemo(() => {
+    if (totalPagesDiario <= 7) {
+      return Array.from({ length: totalPagesDiario }, (_, index) => index + 1);
+    }
+
+    const pages: Array<number | "ellipsis-left" | "ellipsis-right"> = [1];
+    const startPage = Math.max(2, currentPage - 1);
+    const endPage = Math.min(totalPagesDiario - 1, currentPage + 1);
+
+    if (startPage > 2) pages.push("ellipsis-left");
+
+    for (let page = startPage; page <= endPage; page += 1) {
+      pages.push(page);
+    }
+
+    if (endPage < totalPagesDiario - 1) pages.push("ellipsis-right");
+
+    pages.push(totalPagesDiario);
+    return pages;
+  }, [currentPage, totalPagesDiario]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTermDiario, statusFilterDiario, tipoFilterDiario]);
+
+  useEffect(() => {
+    if (currentPage > totalPagesDiario) {
+      setCurrentPage(totalPagesDiario);
+    }
+  }, [currentPage, totalPagesDiario]);
 
   const statusCountsDiario = useMemo(
     () => ({
@@ -458,19 +636,48 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
     [processosDiariosPerfil],
   );
 
+  const requisicoesCounts = useMemo(
+    () => ({
+      total: requisicoesPendentes.length,
+      alta: requisicoesPendentes.filter((req) => req.prioridade === "Alta").length,
+      media: requisicoesPendentes.filter((req) => req.prioridade === "Média").length,
+      baixa: requisicoesPendentes.filter((req) => req.prioridade === "Baixa").length,
+    }),
+    [requisicoesPendentes],
+  );
+
+  const filteredRequisicoes = useMemo(
+    () =>
+      requisicoesPendentes.filter((req) => {
+        const busca = [req.id, req.requisitante, req.objeto].join(" ").toLowerCase();
+        const matchesSearch = busca.includes(searchTermRequisicoes.toLowerCase());
+        const matchesPrioridade =
+          prioridadeFilterRequisicoes === "todas" || req.prioridade === prioridadeFilterRequisicoes;
+
+        return matchesSearch && matchesPrioridade;
+      }),
+    [prioridadeFilterRequisicoes, requisicoesPendentes, searchTermRequisicoes],
+  );
+
+  const {
+    items: sortedRequisicoes,
+    requestSort: sortReq,
+    sortConfig: configReq,
+  } = useTableSort(filteredRequisicoes);
+
   const requisicoesAtribuidasCounts = useMemo(
     () => ({
-      total: processosDiariosPerfil.length,
-      alta: processosDiariosPerfil.filter((req) => req.prioridade === "Alta").length,
-      media: processosDiariosPerfil.filter((req) => req.prioridade === "Média").length,
-      baixa: processosDiariosPerfil.filter((req) => req.prioridade === "Baixa").length,
+      total: processosDiariosAtribuidosAoComprador.length,
+      alta: processosDiariosAtribuidosAoComprador.filter((req) => req.prioridade === "Alta").length,
+      media: processosDiariosAtribuidosAoComprador.filter((req) => req.prioridade === "Média").length,
+      baixa: processosDiariosAtribuidosAoComprador.filter((req) => req.prioridade === "Baixa").length,
     }),
-    [processosDiariosPerfil],
+    [processosDiariosAtribuidosAoComprador],
   );
 
   const filteredRequisicoesAtribuidas = useMemo(
     () =>
-      processosDiariosPerfil.filter((req) => {
+      processosDiariosAtribuidosAoComprador.filter((req) => {
         const busca = [req.numeroRequisicao ?? req.id, req.requisitante ?? "", req.objeto ?? req.descricao ?? ""]
           .join(" ")
           .toLowerCase();
@@ -480,16 +687,10 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
 
         return matchesSearch && matchesPrioridade;
       }),
-    [processosDiariosPerfil, searchTermAtribuidas, prioridadeFilterAtribuidas],
+    [processosDiariosAtribuidosAoComprador, searchTermAtribuidas, prioridadeFilterAtribuidas],
   );
 
-  const processosConsolidadosPerfil = useMemo(
-    () =>
-      perfil === "admin"
-        ? processosConsolidados
-        : processosConsolidados.filter((processo) => processo.responsavel === compradorLogado),
-    [perfil, processosConsolidados],
-  );
+  const processosConsolidadosPerfil = useMemo(() => processosConsolidados, [processosConsolidados]);
 
   const statusCountsConsolidado = useMemo(
     () => ({
@@ -649,6 +850,45 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
     });
   };
 
+  const handleIniciarMudancaStatus = (processo: Processo, statusSelecionado: string) => {
+    if (processo.status === statusSelecionado) return;
+    if (!statusAndamentoPadrao.includes(statusSelecionado as (typeof statusAndamentoPadrao)[number])) return;
+
+    if (perfil === "admin") {
+      setProcessoParaMudarStatus(processo);
+      setNovoStatus(statusSelecionado);
+      setJustificativaStatus("");
+      setIsStatusChangeModalOpen(true);
+      return;
+    }
+
+    handleStatusChange(processo.id, statusSelecionado);
+  };
+
+  const handleConfirmarMudancaStatus = () => {
+    if (!processoParaMudarStatus || !novoStatus) return;
+
+    handleStatusChange(processoParaMudarStatus.id, novoStatus);
+    setIsStatusChangeModalOpen(false);
+    setProcessoParaMudarStatus(null);
+    setNovoStatus("");
+    setJustificativaStatus("");
+  };
+
+  const handleAtribuirComprador = () => {
+    if (!selectedRequisicao || !compradorSelecionado || !dataInicioDistribuicao) return;
+
+    const dataFormatada = new Date(dataInicioDistribuicao).toLocaleDateString("pt-BR");
+    toast.success("Requisição distribuída com sucesso!", {
+      description: `${selectedRequisicao.id} atribuída para ${compradorSelecionado} com início em ${dataFormatada}.`,
+    });
+
+    setIsAtribuirModalOpen(false);
+    setSelectedRequisicao(null);
+    setCompradorSelecionado("");
+    setDataInicioDistribuicao("");
+  };
+
   const handleStatusConsolidadoChange = (
     numeroProcesso: string,
     novoStatus: StatusContratoComprador,
@@ -690,20 +930,42 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl text-black">Processos</h2>
-        <p className="text-gray-600 mt-1">Gerenciamento operacional dos processos de compras</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-3xl text-black">Processos</h2>
+          <p className="text-gray-600 mt-1">Gerenciamento operacional dos processos de compras</p>
+        </div>
+        {perfil === "admin" && (
+          <div className="shrink-0">
+            {activeTab === "requisicoes" && (
+              <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setIsNovaDemandaModalOpen(true)}>
+                <Plus size={16} className="mr-2" />
+                Nova Demanda
+              </Button>
+            )}
+            {activeTab === "diario" && (
+              <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setIsNewProcessModalOpen(true)}>
+                <Plus size={16} className="mr-2" />
+                Cadastrar Processo
+              </Button>
+            )}
+            {activeTab === "consolidado" && (
+              <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setIsNewConsolidadoModalOpen(true)}>
+                <Plus size={16} className="mr-2" />
+                Novo Processo Consolidado
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={`grid w-full ${perfil === "admin" ? "max-w-5xl grid-cols-5" : "max-w-3xl grid-cols-3"}`}>
+        <TabsList className={`grid w-full ${perfil === "admin" ? "max-w-4xl grid-cols-3" : "max-w-3xl grid-cols-3"}`}>
           {perfil === "admin" ? (
             <>
+              <TabsTrigger value="requisicoes">Requisições Pendentes ({requisicoesCounts.total})</TabsTrigger>
               <TabsTrigger value="diario">Processos em Andamento</TabsTrigger>
-              <TabsTrigger value="diretas">Contratações Diretas</TabsTrigger>
-              <TabsTrigger value="licitacoes">Licitações Homologadas</TabsTrigger>
-              <TabsTrigger value="trp">TRP</TabsTrigger>
-              <TabsTrigger value="contratos">Contratos</TabsTrigger>
+              <TabsTrigger value="consolidado">Processos Consolidados</TabsTrigger>
             </>
           ) : (
             <>
@@ -713,6 +975,197 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
             </>
           )}
         </TabsList>
+
+        {perfil === "admin" && (
+          <TabsContent value="requisicoes" className="space-y-6 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-black">{requisicoesCounts.total}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Total</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#e7000b]">{requisicoesCounts.alta}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Prioridade Alta</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#f97316]">{requisicoesCounts.media}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Prioridade Média</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#155dfc]">{requisicoesCounts.baixa}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Prioridade Baixa</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border border-gray-200">
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <Input
+                        placeholder="Buscar por ID, requisitante ou objeto..."
+                        value={searchTermRequisicoes}
+                        onChange={(e) => setSearchTermRequisicoes(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full md:w-48">
+                    <Select value={prioridadeFilterRequisicoes} onValueChange={setPrioridadeFilterRequisicoes}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Prioridade" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas as Prioridades</SelectItem>
+                        <SelectItem value="Alta">Alta</SelectItem>
+                        <SelectItem value="Média">Média</SelectItem>
+                        <SelectItem value="Baixa">Baixa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-gray-200">
+              <CardHeader className="pt-3 pb-1">
+                <CardTitle className="text-xl text-black px-[0px] py-[8px]">Requisições Pendentes</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]">
+                <div className="w-full overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <SortableTableHead
+                          label="ID Requisição"
+                          onClick={() => sortReq("id")}
+                          currentDirection={configReq.key === "id" ? configReq.direction : null}
+                          className="sticky left-0 z-10 min-w-[140px] bg-white"
+                        />
+                        <SortableTableHead
+                          label="Requisitante"
+                          onClick={() => sortReq("requisitante")}
+                          currentDirection={configReq.key === "requisitante" ? configReq.direction : null}
+                          className="min-w-[200px]"
+                        />
+                        <SortableTableHead
+                          label="Objeto"
+                          onClick={() => sortReq("objeto")}
+                          currentDirection={configReq.key === "objeto" ? configReq.direction : null}
+                          className="min-w-[300px]"
+                        />
+                        <SortableTableHead
+                          label="Responsável"
+                          onClick={() => sortReq("responsavel")}
+                          currentDirection={configReq.key === "responsavel" ? configReq.direction : null}
+                          className="min-w-[160px]"
+                        />
+                        <SortableTableHead
+                          label="Prioridade"
+                          onClick={() => sortReq("prioridade")}
+                          currentDirection={configReq.key === "prioridade" ? configReq.direction : null}
+                          className="min-w-[140px]"
+                        />
+                        <TableHead className="min-w-[140px]">Data Recebimento</TableHead>
+                        <TableHead className="min-w-[140px]">Data Finalização</TableHead>
+                        <TableHead className="min-w-[220px]">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedRequisicoes.length > 0 ? (
+                        sortedRequisicoes.map((requisicao) => (
+                          <TableRow key={requisicao.id}>
+                            <TableCell className="text-black sticky left-0 z-10 bg-white">{requisicao.id}</TableCell>
+                            <TableCell className="text-gray-600">{requisicao.requisitante}</TableCell>
+                            <TableCell className="text-gray-600">{requisicao.objeto}</TableCell>
+                            <TableCell className="text-gray-600">{requisicao.responsavel}</TableCell>
+                            <TableCell>
+                              <BadgeNew {...getBadgeMappingForPrioridade(requisicao.prioridade)}>
+                                {requisicao.prioridade}
+                              </BadgeNew>
+                            </TableCell>
+                            <TableCell className="text-gray-600">{requisicao.dataRecebimento}</TableCell>
+                            <TableCell className="text-gray-600">{requisicao.dataFinalizacao}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  className="bg-[#003366] hover:bg-[#002244] text-white"
+                                  onClick={() => {
+                                    toast.success("Processo criado com sucesso!", {
+                                      description: `Processo gerado a partir da requisição ${requisicao.id}.`,
+                                    });
+                                  }}
+                                >
+                                  <FileText size={16} className="mr-2" />
+                                  Criar Processo
+                                </Button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <MoreVertical size={16} className="text-gray-600" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => setRequisicaoParaDetalhes(requisicao)}>
+                                      <Eye size={16} className="mr-2" />
+                                      Ver Detalhes
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setReqParaPrioridade(requisicao);
+                                        setNovaPrioridade(requisicao.prioridade);
+                                        setIsPriorityModalOpen(true);
+                                      }}
+                                    >
+                                      Alterar Prioridade
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setSelectedRequisicao(requisicao);
+                                        setIsAtribuirModalOpen(true);
+                                      }}
+                                    >
+                                      Atribuir Comprador
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                            Nenhuma requisição pendente encontrada com os filtros aplicados.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="diario" className="space-y-6 mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -787,42 +1240,56 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div className="relative md:col-span-2">
-                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    placeholder="Buscar por ID, requisição, requisitante ou objeto..."
-                    value={searchTermDiario}
-                    onChange={(e) => setSearchTermDiario(e.target.value)}
-                    className="pl-9"
-                  />
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <div className="relative md:col-span-2">
+                    <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Input
+                      placeholder="Buscar por ID, requisição, requisitante ou objeto..."
+                      value={searchTermDiario}
+                      onChange={(e) => setSearchTermDiario(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
+                  <Select value={tipoFilterDiario} onValueChange={setTipoFilterDiario}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos os Tipos</SelectItem>
+                      <SelectItem value="Dispensa">Dispensa</SelectItem>
+                      <SelectItem value="Inexigibilidade">Inexigibilidade</SelectItem>
+                      <SelectItem value="Licitacao (Pesquisa de Preco)">Licitacao (Pesquisa de Preco)</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={statusFilterDiario} onValueChange={setStatusFilterDiario}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos os Status</SelectItem>
+                      {statusAndamentoPadrao.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <Select value={tipoFilterDiario} onValueChange={setTipoFilterDiario}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos os Tipos</SelectItem>
-                    <SelectItem value="Dispensa">Dispensa</SelectItem>
-                    <SelectItem value="Inexigibilidade">Inexigibilidade</SelectItem>
-                    <SelectItem value="Licitacao (Pesquisa de Preco)">Licitacao (Pesquisa de Preco)</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select value={statusFilterDiario} onValueChange={setStatusFilterDiario}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos os Status</SelectItem>
-                    {statusAndamentoPadrao.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {perfil === "comprador" && (
+                  <div className="flex items-center space-x-2">
+                    <Switch id="filter-meus" checked={mostrarApenasMeus} onCheckedChange={setMostrarApenasMeus} />
+                    <Label
+                      htmlFor="filter-meus"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Mostrar apenas meus processos
+                    </Label>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -871,61 +1338,150 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
                     </TableHeader>
 
                     <TableBody>
-                      {sortedProcessosDiarios.map((processo) => (
-                        <TableRow key={processo.id}>
-                          <TableCell className="text-black sticky left-0 z-10 bg-white">
-                            {processo.numeroRequisicao ?? "-"}
-                          </TableCell>
-                          <TableCell className="text-gray-600">{processo.objeto ?? processo.descricao}</TableCell>
-                          <TableCell className="text-gray-600">{processo.requisitante ?? "-"}</TableCell>
-                          <TableCell className="text-gray-600">{processo.modalidade}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Select
-                                value={processo.status}
-                                onValueChange={(novoStatus) => handleStatusChange(processo.id, novoStatus)}
-                              >
-                                <SelectTrigger className="w-[220px] h-8">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {statusAndamentoPadrao.map((status) => (
-                                    <SelectItem key={status} value={status}>
-                                      {status}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-gray-600">{processo.dataRecebimento ?? "-"}</TableCell>
-                          <TableCell className="text-gray-600">{processo.dataFinalizacao ?? "-"}</TableCell>
-                          <TableCell>
-                            <div className="flex justify-center">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                    <MoreVertical size={16} className="text-gray-600" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      handleVerDetalhes("diario", processo);
-                                    }}
-                                  >
-                                    Ver Detalhes
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleEditar(processo)}>Editar</DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {paginatedProcessosDiarios.map((processo) => {
+                        const canEditProcesso = perfil === "admin" || processo.responsavel === compradorLogado;
+
+                        return (
+                          <TableRow key={processo.id}>
+                            <TableCell className="text-black sticky left-0 z-10 bg-white">
+                              {processo.numeroRequisicao ?? "-"}
+                            </TableCell>
+                            <TableCell className="text-gray-600">{processo.objeto ?? processo.descricao}</TableCell>
+                            <TableCell className="text-gray-600">{processo.requisitante ?? "-"}</TableCell>
+                            <TableCell className="text-gray-600">{processo.modalidade}</TableCell>
+                            <TableCell>
+                              {canEditProcesso ? (
+                                <Select
+                                  value={processo.status}
+                                  onValueChange={(novoStatus) => handleIniciarMudancaStatus(processo, novoStatus)}
+                                >
+                                  <SelectTrigger className="w-[280px] h-8 overflow-hidden">
+                                    <SelectValue className="block max-w-[240px] truncate" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {statusAndamentoPadrao.map((status) => (
+                                      <SelectItem key={status} value={status}>
+                                        {status}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-gray-600">{processo.dataRecebimento ?? "-"}</TableCell>
+                            <TableCell className="text-gray-600">{processo.dataFinalizacao ?? "-"}</TableCell>
+                            <TableCell>
+                              <div className="flex justify-center">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                      <MoreVertical size={16} className="text-gray-600" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        handleVerDetalhes("diario", processo);
+                                      }}
+                                    >
+                                      Ver Detalhes
+                                    </DropdownMenuItem>
+                                    {canEditProcesso && (
+                                      <DropdownMenuItem onClick={() => handleEditar(processo)}>Editar</DropdownMenuItem>
+                                    )}
+                                    {canEditProcesso && perfil === "admin" && (
+                                      <>
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="text-red-600"
+                                          onClick={() => {
+                                            setProcessoToDelete(processo);
+                                            setIsDeleteDialogOpen(true);
+                                          }}
+                                        >
+                                          <Trash2 size={16} className="mr-2" />
+                                          Excluir
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
+                </div>
+
+                <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+                  <p className="text-sm text-gray-600 md:min-w-[280px]">
+                    Exibindo de {displayStartDiario} a {displayEndDiario} de {totalItemsDiario} processos
+                  </p>
+
+                  <div className="flex-1 flex justify-center">
+                    <Pagination className="w-auto">
+                      <PaginationContent className="gap-2">
+                        <PaginationItem>
+                          <PaginationLink
+                            href="#"
+                            size="default"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (currentPage > 1) setCurrentPage((prev) => prev - 1);
+                            }}
+                            className={`h-8 w-auto min-w-fit px-3 py-1 whitespace-nowrap rounded-md ${
+                              currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"
+                            }`}
+                          >
+                            Anterior
+                          </PaginationLink>
+                        </PaginationItem>
+
+                        {paginationPagesDiario.map((page, index) => (
+                          <PaginationItem key={`${page}-${index}`}>
+                            {typeof page === "number" ? (
+                              <PaginationLink
+                                href="#"
+                                size="icon"
+                                isActive={page === currentPage}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setCurrentPage(page);
+                                }}
+                                className="h-8 w-8 min-w-8 p-0 flex items-center justify-center rounded-md cursor-pointer"
+                              >
+                                {page}
+                              </PaginationLink>
+                            ) : (
+                              <PaginationEllipsis />
+                            )}
+                          </PaginationItem>
+                        ))}
+
+                        <PaginationItem>
+                          <PaginationLink
+                            href="#"
+                            size="default"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (currentPage < totalPagesDiario) setCurrentPage((prev) => prev + 1);
+                            }}
+                            className={`h-8 w-auto min-w-fit px-3 py-1 whitespace-nowrap rounded-md ${
+                              currentPage === totalPagesDiario ? "pointer-events-none opacity-50" : "cursor-pointer"
+                            }`}
+                          >
+                            Próxima
+                          </PaginationLink>
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+
+                  <div className="hidden md:block md:min-w-[280px]" />
                 </div>
               </CardContent>
             </Card>
@@ -947,8 +1503,10 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
 
                       try {
                         const draggedProcesso = JSON.parse(processoData) as Processo;
-                        if (draggedProcesso.status !== status) {
-                          handleStatusChange(draggedProcesso.id, status);
+                        const canEditDraggedProcesso =
+                          perfil === "admin" || draggedProcesso.responsavel === compradorLogado;
+                        if (canEditDraggedProcesso && draggedProcesso.status !== status) {
+                          handleIniciarMudancaStatus(draggedProcesso, status);
                         }
                       } catch {
                         toast.error("Falha ao mover card");
@@ -968,66 +1526,74 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
                         {processosPorStatus.length === 0 ? (
                           <p className="text-gray-400 text-center text-sm py-8">Nenhum processo neste status</p>
                         ) : (
-                          processosPorStatus.map((processo) => (
-                            <div
-                              key={processo.id}
-                              className="cursor-grab active:cursor-grabbing"
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData("processo", JSON.stringify(processo));
-                                e.currentTarget.style.opacity = "0.5";
-                              }}
-                              onDragEnd={(e) => {
-                                e.currentTarget.style.opacity = "1";
-                              }}
-                              draggable
-                            >
-                              <Card className="border border-gray-200 bg-white hover:shadow-md transition-shadow">
-                                <CardContent className="p-4">
-                                  <div className="space-y-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <p className="font-medium text-black flex-1">{processo.requisitante ?? "-"}</p>
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                                            <MoreVertical size={14} className="text-gray-600" />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                          <DropdownMenuItem
-                                            onClick={() => {
-                                              handleVerDetalhes("diario", processo);
-                                            }}
-                                          >
-                                            Ver Detalhes
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem onClick={() => handleEditar(processo)}>Editar</DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </div>
+                          processosPorStatus.map((processo) => {
+                            const canEditProcesso = perfil === "admin" || processo.responsavel === compradorLogado;
 
-                                    <div className="space-y-2 text-sm">
-                                      <div>
-                                        <span className="text-gray-500">ID: </span>
-                                        <span className="text-gray-700">{processo.id}</span>
+                            return (
+                              <div
+                                key={processo.id}
+                                className={canEditProcesso ? "cursor-grab active:cursor-grabbing" : ""}
+                                onDragStart={(e) => {
+                                  if (!canEditProcesso) return;
+                                  e.dataTransfer.setData("processo", JSON.stringify(processo));
+                                  e.currentTarget.style.opacity = "0.5";
+                                }}
+                                onDragEnd={(e) => {
+                                  if (!canEditProcesso) return;
+                                  e.currentTarget.style.opacity = "1";
+                                }}
+                                draggable={canEditProcesso}
+                              >
+                                <Card className="border border-gray-200 bg-white hover:shadow-md transition-shadow">
+                                  <CardContent className="p-4">
+                                    <div className="space-y-3">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="font-medium text-black flex-1">{processo.requisitante ?? "-"}</p>
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                              <MoreVertical size={14} className="text-gray-600" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem
+                                              onClick={() => {
+                                                handleVerDetalhes("diario", processo);
+                                              }}
+                                            >
+                                              Ver Detalhes
+                                            </DropdownMenuItem>
+                                            {canEditProcesso && (
+                                              <DropdownMenuItem onClick={() => handleEditar(processo)}>Editar</DropdownMenuItem>
+                                            )}
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
                                       </div>
-                                      <div>
-                                        <span className="text-gray-500">Requisição: </span>
-                                        <span className="text-gray-700">{processo.numeroRequisicao ?? "-"}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-gray-500">Tipo: </span>
-                                        <span className="text-gray-700">{processo.modalidade}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-gray-500">Responsável: </span>
-                                        <span className="text-gray-700">{processo.responsavel}</span>
+
+                                      <div className="space-y-2 text-sm">
+                                        <div>
+                                          <span className="text-gray-500">ID: </span>
+                                          <span className="text-gray-700">{processo.id}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Requisição: </span>
+                                          <span className="text-gray-700">{processo.numeroRequisicao ?? "-"}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Tipo: </span>
+                                          <span className="text-gray-700">{processo.modalidade}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-500">Responsável: </span>
+                                          <span className="text-gray-700">{processo.responsavel}</span>
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </div>
-                          ))
+                                  </CardContent>
+                                </Card>
+                              </div>
+                            );
+                          })
                         )}
                       </CardContent>
                     </Card>
@@ -1037,6 +1603,363 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
             </div>
           )}
         </TabsContent>
+
+        {perfil === "admin" && (
+          <TabsContent value="consolidado" className="space-y-6 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-black">{statusCountsConsolidado.todos}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Total</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#22c55e]">{statusCountsConsolidado.ativo}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Ativos</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#f59e0b]">{statusCountsConsolidado.proximoVencimento}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Próx. ao Vencimento</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#e7000b]">{statusCountsConsolidado.vencido}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Vencidos</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="border border-gray-200">
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <Input
+                        placeholder="Buscar por número, requisitante ou empresa..."
+                        value={searchTermConsolidado}
+                        onChange={(e) => setSearchTermConsolidado(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full md:w-56">
+                    <Select value={statusFilterConsolidado} onValueChange={setStatusFilterConsolidado}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Status do Contrato" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos os Status</SelectItem>
+                        <SelectItem value="Ativo">Ativo</SelectItem>
+                        <SelectItem value="Próximo ao Vencimento">Próximo ao Vencimento</SelectItem>
+                        <SelectItem value="Vencido">Vencido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Tabs defaultValue="diretas" className="w-full">
+              <TabsList className="grid w-full max-w-4xl grid-cols-4 mb-4 h-9 p-1 bg-muted rounded-md">
+                <TabsTrigger value="diretas">Contratações Diretas ({filteredDiretas.length})</TabsTrigger>
+                <TabsTrigger value="licitacoes">Licitações Homologadas ({filteredLicitacoes.length})</TabsTrigger>
+                <TabsTrigger value="trp">Lista de TRPs ({filteredTRP.length})</TabsTrigger>
+                <TabsTrigger value="contratos">Lista de Contratos ({filteredContratos.length})</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="diretas" className="mt-0 space-y-4">
+                <Card className="border border-gray-200">
+                  <CardHeader className="pt-3 pb-1">
+                    <CardTitle className="text-xl text-black px-[0px] py-[8px]">Contratações Diretas</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]">
+                    <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <SortableTableHead label="ID Processo" onClick={() => sortDiretas("numeroProcesso")} currentDirection={configDiretas.key === "numeroProcesso" ? configDiretas.direction : null} className="sticky left-0 z-10 min-w-[170px] bg-white" />
+                            <SortableTableHead label="Requisitante" onClick={() => sortDiretas("requisitante")} currentDirection={configDiretas.key === "requisitante" ? configDiretas.direction : null} className="min-w-[220px]" />
+                            <SortableTableHead label="Objeto" onClick={() => sortDiretas("objeto")} currentDirection={configDiretas.key === "objeto" ? configDiretas.direction : null} className="min-w-[320px]" />
+                            <SortableTableHead label="Tipo/Modalidade" onClick={() => sortDiretas("tipo")} currentDirection={configDiretas.key === "tipo" ? configDiretas.direction : null} className="min-w-[200px]" />
+                            <SortableTableHead label="Status" onClick={() => sortDiretas("status")} currentDirection={configDiretas.key === "status" ? configDiretas.direction : null} className="min-w-[140px]" />
+                            <SortableTableHead label="Responsável" onClick={() => sortDiretas("responsavel")} currentDirection={configDiretas.key === "responsavel" ? configDiretas.direction : null} className="min-w-[160px]" />
+                            <TableHead className="min-w-[140px]">Data Recebimento</TableHead>
+                            <TableHead className="min-w-[140px]">Data Finalização</TableHead>
+                            <SortableTableHead label="Empresa Vencedora" onClick={() => sortDiretas("empresaVencedora")} currentDirection={configDiretas.key === "empresaVencedora" ? configDiretas.direction : null} className="min-w-[220px]" />
+                            <TableHead className="min-w-[140px]">Data da Entrega</TableHead>
+                            <SortableTableHead label="Valor" onClick={() => sortDiretas("valor")} currentDirection={configDiretas.key === "valor" ? configDiretas.direction : null} className="min-w-[140px]" />
+                            <TableHead className="min-w-[140px]">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedDiretas.map((processo) => (
+                            <TableRow key={processo.numeroProcesso}>
+                              <TableCell className="text-black sticky left-0 z-10 bg-white">{processo.numeroProcesso}</TableCell>
+                              <TableCell className="text-gray-600">{processo.requisitante}</TableCell>
+                              <TableCell className="text-gray-600">{processo.objeto}</TableCell>
+                              <TableCell className="text-gray-600">{processo.tipo}</TableCell>
+                              <TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus></TableCell>
+                              <TableCell className="text-gray-600">{processo.responsavel}</TableCell>
+                              <TableCell className="text-gray-600">{processo.dataRecebimento}</TableCell>
+                              <TableCell className="text-gray-600">{processo.dataFinalizacao}</TableCell>
+                              <TableCell className="text-black">{processo.empresaVencedora ?? "-"}</TableCell>
+                              <TableCell className="text-gray-600">{processo.dataEntrega ?? "-"}</TableCell>
+                              <TableCell className="text-black">{processo.valor}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", processo)}><Eye size={16} className="text-gray-600" /></Button>
+                                  {(perfil === "admin" || processo.responsavel === compradorLogado) && (
+                                    <>
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedConsolidado(processo); setIsEditConsolidadoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={16} className="text-gray-600" /></Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsAditivoModalOpen(true); }}><FileText size={16} className="mr-2" />Registrar Aditivo</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsProrrogacaoModalOpen(true); }}><Calendar size={16} className="mr-2" />Prorrogar Contrato</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="licitacoes" className="mt-0 space-y-4">
+                <Card className="border border-gray-200">
+                  <CardHeader className="pt-3 pb-1">
+                    <CardTitle className="text-xl text-black px-[0px] py-[8px]">Licitações Homologadas</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]">
+                    <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <SortableTableHead label="ID Processo" onClick={() => sortLicitacoes("numeroProcesso")} currentDirection={configLicitacoes.key === "numeroProcesso" ? configLicitacoes.direction : null} className="sticky left-0 z-10 min-w-[170px] bg-white" />
+                            <SortableTableHead label="Requisitante" onClick={() => sortLicitacoes("requisitante")} currentDirection={configLicitacoes.key === "requisitante" ? configLicitacoes.direction : null} className="min-w-[220px]" />
+                            <SortableTableHead label="Objeto" onClick={() => sortLicitacoes("objeto")} currentDirection={configLicitacoes.key === "objeto" ? configLicitacoes.direction : null} className="min-w-[320px]" />
+                            <SortableTableHead label="Tipo/Modalidade" onClick={() => sortLicitacoes("tipo")} currentDirection={configLicitacoes.key === "tipo" ? configLicitacoes.direction : null} className="min-w-[200px]" />
+                            <SortableTableHead label="Status" onClick={() => sortLicitacoes("status")} currentDirection={configLicitacoes.key === "status" ? configLicitacoes.direction : null} className="min-w-[140px]" />
+                            <SortableTableHead label="Responsável" onClick={() => sortLicitacoes("responsavel")} currentDirection={configLicitacoes.key === "responsavel" ? configLicitacoes.direction : null} className="min-w-[160px]" />
+                            <TableHead className="min-w-[140px]">Data Recebimento</TableHead>
+                            <TableHead className="min-w-[140px]">Data Finalização</TableHead>
+                            <TableHead className="min-w-[150px]">Data Homologação</TableHead>
+                            <TableHead className="min-w-[150px]">Tempo Total (Dias)</TableHead>
+                            <SortableTableHead label="Valor" onClick={() => sortLicitacoes("valor")} currentDirection={configLicitacoes.key === "valor" ? configLicitacoes.direction : null} className="min-w-[140px]" />
+                            <TableHead className="min-w-[140px]">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedLicitacoes.map((processo) => (
+                            <TableRow key={processo.numeroProcesso}>
+                              <TableCell className="text-black sticky left-0 z-10 bg-white">{processo.numeroProcesso}</TableCell>
+                              <TableCell className="text-gray-600">{processo.requisitante}</TableCell>
+                              <TableCell className="text-gray-600">{processo.objeto}</TableCell>
+                              <TableCell className="text-gray-600">{processo.tipo}</TableCell>
+                              <TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus></TableCell>
+                              <TableCell className="text-gray-600">{processo.responsavel}</TableCell>
+                              <TableCell className="text-gray-600">{processo.dataRecebimento}</TableCell>
+                              <TableCell className="text-gray-600">{processo.dataFinalizacao}</TableCell>
+                              <TableCell className="text-gray-600">{processo.dataHomologacao ?? "-"}</TableCell>
+                              <TableCell className="text-gray-600">{processo.tempoTotalDias ?? "-"}</TableCell>
+                              <TableCell className="text-black">{processo.valor}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", processo)}><Eye size={16} className="text-gray-600" /></Button>
+                                  {(perfil === "admin" || processo.responsavel === compradorLogado) && (
+                                    <>
+                                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedConsolidado(processo); setIsEditConsolidadoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={16} className="text-gray-600" /></Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsAditivoModalOpen(true); }}><FileText size={16} className="mr-2" />Registrar Aditivo</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsProrrogacaoModalOpen(true); }}><Calendar size={16} className="mr-2" />Prorrogar Contrato</DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="trp" className="mt-0 space-y-4">
+                <Card className="border border-gray-200">
+                  <CardContent className="p-4">
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1">
+                        <div className="relative">
+                          <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                          <Input
+                            placeholder="Buscar por empresa, CNPJ ou número..."
+                            value={searchTermTRP}
+                            onChange={(e) => setSearchTermTRP(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      <div className="w-full md:w-48">
+                        <Select value={filterTRP} onValueChange={setFilterTRP}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Filtrar Aditivos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todos">Todos</SelectItem>
+                            <SelectItem value="com-aditivos">Com Aditivos</SelectItem>
+                            <SelectItem value="sem-aditivos">Sem Aditivos</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-gray-200">
+                  <CardHeader className="pt-3 pb-1">
+                    <CardTitle className="text-xl text-black px-[0px] py-[8px]">Lista de TRPs</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]">
+                    <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <SortableTableHead label="Empresa Vencedora" onClick={() => sortTRP("empresaVencedora")} currentDirection={configTRP.key === "empresaVencedora" ? configTRP.direction : null} className="min-w-[220px]" />
+                            <TableHead className="min-w-[180px]">CNPJ</TableHead>
+                            <SortableTableHead label="Número do Processo" onClick={() => sortTRP("numeroProcesso")} currentDirection={configTRP.key === "numeroProcesso" ? configTRP.direction : null} className="min-w-[160px]" />
+                            <SortableTableHead label="Valor Contratado" onClick={() => sortTRP("valorContratado")} currentDirection={configTRP.key === "valorContratado" ? configTRP.direction : null} className="min-w-[140px]" />
+                            <TableHead className="min-w-[120px]">Vigência</TableHead>
+                            <TableHead className="min-w-[100px]">Aditivos</TableHead>
+                            <TableHead className="min-w-[100px]">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedTRP.map((trp) => (
+                            <TableRow key={trp.numeroProcesso}>
+                              <TableCell className="text-black">{trp.empresaVencedora}</TableCell>
+                              <TableCell className="text-gray-600">{trp.cnpj}</TableCell>
+                              <TableCell className="text-black">{trp.numeroProcesso}</TableCell>
+                              <TableCell className="text-black">{trp.valorContratado}</TableCell>
+                              <TableCell className="text-gray-600">{trp.vigencia}</TableCell>
+                              <TableCell className="text-gray-600">{trp.aditivos}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", trp)}><Eye size={16} className="text-gray-600" /></Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedTRP(trp); setIsEditTRPModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="contratos" className="mt-0 space-y-4">
+                <Card className="border border-gray-200">
+                  <CardContent className="p-4">
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1">
+                        <div className="relative">
+                          <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                          <Input
+                            placeholder="Buscar por empresa, CNPJ ou número..."
+                            value={searchTermContratos}
+                            onChange={(e) => setSearchTermContratos(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      <div className="w-full md:w-48">
+                        <Select value={filterContratos} onValueChange={setFilterContratos}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Filtrar Aditivos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todos">Todos</SelectItem>
+                            <SelectItem value="com-aditivos">Com Aditivos</SelectItem>
+                            <SelectItem value="sem-aditivos">Sem Aditivos</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-gray-200">
+                  <CardHeader className="pt-3 pb-1">
+                    <CardTitle className="text-xl text-black px-[0px] py-[8px]">Lista de Contratos</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]">
+                    <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <SortableTableHead label="Empresa Vencedora" onClick={() => sortContratos("empresaVencedora")} currentDirection={configContratos.key === "empresaVencedora" ? configContratos.direction : null} className="min-w-[220px]" />
+                            <TableHead className="min-w-[180px]">CNPJ</TableHead>
+                            <SortableTableHead label="Número do Processo" onClick={() => sortContratos("numeroProcesso")} currentDirection={configContratos.key === "numeroProcesso" ? configContratos.direction : null} className="min-w-[160px]" />
+                            <SortableTableHead label="Valor Contratado" onClick={() => sortContratos("valorContratado")} currentDirection={configContratos.key === "valorContratado" ? configContratos.direction : null} className="min-w-[140px]" />
+                            <TableHead className="min-w-[120px]">Vigência</TableHead>
+                            <TableHead className="min-w-[100px]">Aditivos</TableHead>
+                            <TableHead className="min-w-[100px]">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedContratos.map((contrato) => (
+                            <TableRow key={contrato.numeroProcesso}>
+                              <TableCell className="text-black">{contrato.empresaVencedora}</TableCell>
+                              <TableCell className="text-gray-600">{contrato.cnpj}</TableCell>
+                              <TableCell className="text-black">{contrato.numeroProcesso}</TableCell>
+                              <TableCell className="text-black">{contrato.valorContratado}</TableCell>
+                              <TableCell className="text-gray-600">{contrato.vigencia}</TableCell>
+                              <TableCell className="text-gray-600">{contrato.aditivos}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", contrato)}><Eye size={16} className="text-gray-600" /></Button>
+                                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedContrato(contrato); setIsEditContratoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+        )}
 
         {perfil === "comprador" && (
           <TabsContent value="atribuidas" className="space-y-6 mt-6">
@@ -1204,7 +2127,7 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
 
               <TabsContent value="diretas" className="mt-0 space-y-4">
                 {viewModeConsolidado === "table" ? (
-                  <Card className="border border-gray-200"><CardHeader className="pt-3 pb-1"><CardTitle className="text-xl text-black px-[0px] py-[8px]">Contratações Diretas</CardTitle></CardHeader><CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]"><div className="w-full overflow-x-auto"><Table><TableHeader><TableRow><SortableTableHead label="Número do Processo" onClick={() => sortDiretas("numeroProcesso")} currentDirection={configDiretas.key === "numeroProcesso" ? configDiretas.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" /><SortableTableHead label="Empresa" onClick={() => sortDiretas("empresaVencedora")} currentDirection={configDiretas.key === "empresaVencedora" ? configDiretas.direction : null} className="min-w-[220px]" /><SortableTableHead label="Valor" onClick={() => sortDiretas("valor")} currentDirection={configDiretas.key === "valor" ? configDiretas.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[160px]">Fim Vigência</TableHead><SortableTableHead label="Status" onClick={() => sortDiretas("statusContrato")} currentDirection={configDiretas.key === "statusContrato" ? configDiretas.direction : null} className="min-w-[160px]" /><TableHead className="min-w-[140px]">Ações</TableHead></TableRow></TableHeader><TableBody>{sortedDiretas.map((processo) => (<TableRow key={processo.numeroProcesso}><TableCell className="text-black sticky left-0 z-10 bg-white">{processo.numeroProcesso}</TableCell><TableCell className="text-black">{processo.empresaVencedora}</TableCell><TableCell className="text-black">{processo.valor}</TableCell><TableCell className="text-gray-600">{processo.dataFimVigencia}</TableCell><TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.statusContrato === "Em Renovação" ? "Próximo ao Vencimento" : processo.statusContrato)}>{processo.statusContrato}</BadgeStatus></TableCell><TableCell><div className="flex items-center gap-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", processo)}><Info size={16} className="text-gray-600" /></Button><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedConsolidado(processo); setIsEditConsolidadoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button></div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
+                  <Card className="border border-gray-200"><CardHeader className="pt-3 pb-1"><CardTitle className="text-xl text-black px-[0px] py-[8px]">Contratações Diretas</CardTitle></CardHeader><CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]"><div className="w-full overflow-x-auto"><Table><TableHeader><TableRow><SortableTableHead label="Número do Processo" onClick={() => sortDiretas("numeroProcesso")} currentDirection={configDiretas.key === "numeroProcesso" ? configDiretas.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" /><SortableTableHead label="Empresa" onClick={() => sortDiretas("empresaVencedora")} currentDirection={configDiretas.key === "empresaVencedora" ? configDiretas.direction : null} className="min-w-[220px]" /><SortableTableHead label="Valor" onClick={() => sortDiretas("valor")} currentDirection={configDiretas.key === "valor" ? configDiretas.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[160px]">Fim Vigência</TableHead><SortableTableHead label="Status" onClick={() => sortDiretas("statusContrato")} currentDirection={configDiretas.key === "statusContrato" ? configDiretas.direction : null} className="min-w-[160px]" /><TableHead className="min-w-[140px]">Ações</TableHead></TableRow></TableHeader><TableBody>{sortedDiretas.map((processo) => (<TableRow key={processo.numeroProcesso}><TableCell className="text-black sticky left-0 z-10 bg-white">{processo.numeroProcesso}</TableCell><TableCell className="text-black">{processo.empresaVencedora}</TableCell><TableCell className="text-black">{processo.valor}</TableCell><TableCell className="text-gray-600">{processo.dataFimVigencia}</TableCell><TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.statusContrato === "Em Renovação" ? "Próximo ao Vencimento" : processo.statusContrato)}>{processo.statusContrato}</BadgeStatus></TableCell><TableCell><div className="flex items-center gap-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", processo)}><Info size={16} className="text-gray-600" /></Button>{processo.responsavel === compradorLogado && (<Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedConsolidado(processo); setIsEditConsolidadoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button>)}</div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
                 ) : (
                   <div className="flex gap-4 overflow-x-auto pb-4">
                     {statusKanbanConsolidado.map((status) => {
@@ -1227,70 +2150,523 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
           </TabsContent>
         )}
 
-        {perfil === "admin" && (
-        <TabsContent value="diretas" className="space-y-6 mt-6">
-          {perfil === "admin" ? (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="border border-gray-200"><CardContent className="p-4"><div className="text-center"><p className="text-2xl text-black">{diretasAdmin.length}</p><p className="text-sm text-gray-600">Total de Contratos</p></div></CardContent></Card>
-                <Card className="border border-gray-200"><CardContent className="p-4"><div className="text-center"><p className="text-2xl text-green-600">{diretasAdmin.filter((p) => p.statusContrato === "Ativo").length}</p><p className="text-sm text-gray-600">Ativos</p></div></CardContent></Card>
-                <Card className="border border-gray-200"><CardContent className="p-4"><div className="text-center"><p className="text-2xl text-yellow-600">{diretasAdmin.filter((p) => p.statusContrato === "Próximo ao Vencimento").length}</p><p className="text-sm text-gray-600">Próximo ao Vencimento</p></div></CardContent></Card>
-                <Card className="border border-gray-200"><CardContent className="p-4"><div className="text-center"><p className="text-2xl text-red-600">{diretasAdmin.filter((p) => p.statusContrato === "Vencido").length}</p><p className="text-sm text-gray-600">Vencidos</p></div></CardContent></Card>
-              </div>
-
-              <Card className="border border-gray-200">
-                <CardHeader className="pt-3 pb-1"><CardTitle className="text-xl text-black px-[0px] py-[8px]">Contratações Diretas</CardTitle></CardHeader>
-                <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px] space-y-4">
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1"><div className="relative"><Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" /><Input placeholder="Buscar por número, requisitante ou empresa..." value={searchTermConsolidado} onChange={(e) => setSearchTermConsolidado(e.target.value)} className="pl-10" /></div></div>
-                    <div className="w-full md:w-56"><Select value={statusFilterConsolidado} onValueChange={setStatusFilterConsolidado}><SelectTrigger><SelectValue placeholder="Status do Contrato" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os Status</SelectItem><SelectItem value="Ativo">Ativo</SelectItem><SelectItem value="Próximo ao Vencimento">Próximo ao Vencimento</SelectItem><SelectItem value="Vencido">Vencido</SelectItem></SelectContent></Select></div>
-                  </div>
-                  <div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg">
-                    <Table>
-                      <TableHeader><TableRow><SortableTableHead label="Número do Processo" onClick={() => sortDiretas("numeroProcesso")} currentDirection={configDiretas.key === "numeroProcesso" ? configDiretas.direction : null} className="sticky left-0 z-10 min-w-[170px] bg-white" /><SortableTableHead label="Requisitante" onClick={() => sortDiretas("requisitante")} currentDirection={configDiretas.key === "requisitante" ? configDiretas.direction : null} className="min-w-[220px]" /><SortableTableHead label="Objeto" onClick={() => sortDiretas("objeto")} currentDirection={configDiretas.key === "objeto" ? configDiretas.direction : null} className="min-w-[320px]" /><TableHead className="min-w-[200px]">Tipo/Modalidade</TableHead><SortableTableHead label="Status" onClick={() => sortDiretas("status")} currentDirection={configDiretas.key === "status" ? configDiretas.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[160px]">Responsável</TableHead><TableHead className="min-w-[140px]">Data Recebimento</TableHead><TableHead className="min-w-[140px]">Data Finalização</TableHead><SortableTableHead label="Empresa Vencedora" onClick={() => sortDiretas("empresaVencedora")} currentDirection={configDiretas.key === "empresaVencedora" ? configDiretas.direction : null} className="min-w-[220px]" /><TableHead className="min-w-[140px]">Data da Entrega</TableHead><SortableTableHead label="Valor" onClick={() => sortDiretas("valor")} currentDirection={configDiretas.key === "valor" ? configDiretas.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[140px]">Ações</TableHead></TableRow></TableHeader>
-                      <TableBody>{sortedDiretas.map((processo) => (<TableRow key={processo.numeroProcesso}><TableCell className="text-black sticky left-0 z-10 bg-white">{processo.numeroProcesso}</TableCell><TableCell className="text-gray-600">{processo.requisitante}</TableCell><TableCell className="text-gray-600">{processo.objeto}</TableCell><TableCell className="text-gray-600">{processo.tipo}</TableCell><TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus></TableCell><TableCell className="text-gray-600">{processo.responsavel}</TableCell><TableCell className="text-gray-600">{processo.dataRecebimento}</TableCell><TableCell className="text-gray-600">{processo.dataFinalizacao}</TableCell><TableCell className="text-black">{processo.empresaVencedora ?? "-"}</TableCell><TableCell className="text-gray-600">{processo.dataEntrega ?? "-"}</TableCell><TableCell className="text-black">{processo.valor}</TableCell><TableCell><div className="flex items-center gap-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", processo)}><Info size={16} className="text-gray-600" /></Button><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedConsolidado(processo); setIsEditConsolidadoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={16} className="text-gray-600" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsAditivoModalOpen(true); }}><FileText size={16} className="mr-2" />Registrar Aditivo</DropdownMenuItem><DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsProrrogacaoModalOpen(true); }}><Calendar size={16} className="mr-2" />Prorrogar Contrato</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></TableCell></TableRow>))}</TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className="border border-gray-200"><CardContent className="flex flex-col items-center justify-center h-full py-6"><div className="flex flex-col gap-1 items-center justify-center text-center"><p className="text-2xl leading-8 text-black">{diretasComprador.length}</p><p className="text-xs leading-4 text-[#4a5565]">Total</p></div></CardContent></Card>
-                <Card className="border border-gray-200"><CardContent className="flex flex-col items-center justify-center h-full py-6"><div className="flex flex-col gap-1 items-center justify-center text-center"><p className="text-2xl leading-8 text-[#22c55e]">{diretasComprador.filter((p) => p.statusContrato === "Ativo").length}</p><p className="text-xs leading-4 text-[#4a5565]">Ativos</p></div></CardContent></Card>
-                <Card className="border border-gray-200"><CardContent className="flex flex-col items-center justify-center h-full py-6"><div className="flex flex-col gap-1 items-center justify-center text-center"><p className="text-2xl leading-8 text-[#155dfc]">{diretasComprador.filter((p) => p.statusContrato === "Em Renovação").length}</p><p className="text-xs leading-4 text-[#4a5565]">Em Renovação</p></div></CardContent></Card>
-                <Card className="border border-gray-200"><CardContent className="flex flex-col items-center justify-center h-full py-6"><div className="flex flex-col gap-1 items-center justify-center text-center"><p className="text-2xl leading-8 text-[#e7000b]">{diretasComprador.filter((p) => p.statusContrato === "Vencido").length}</p><p className="text-xs leading-4 text-[#4a5565]">Vencidos</p></div></CardContent></Card>
-              </div>
-              <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex flex-col md:flex-row gap-4"><div className="flex-1"><div className="relative"><Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" /><Input placeholder="Buscar por ID ou empresa..." value={searchTermConsolidado} onChange={(e) => setSearchTermConsolidado(e.target.value)} className="pl-10" /></div></div><div className="w-full md:w-48"><Select value={statusFilterConsolidado} onValueChange={setStatusFilterConsolidado}><SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os Status</SelectItem><SelectItem value="Ativo">Ativo</SelectItem><SelectItem value="Em Renovação">Em Renovação</SelectItem><SelectItem value="Vencido">Vencido</SelectItem></SelectContent></Select></div><div className="flex gap-1 border border-gray-200 rounded-lg p-1"><Button variant={viewModeConsolidado === "table" ? "default" : "ghost"} size="sm" onClick={() => setViewModeConsolidado("table")} className={viewModeConsolidado === "table" ? "bg-[#003366] hover:bg-[#002244] text-white" : ""}><List size={16} className="mr-2" />Tabela</Button><Button variant={viewModeConsolidado === "kanban" ? "default" : "ghost"} size="sm" onClick={() => setViewModeConsolidado("kanban")} className={viewModeConsolidado === "kanban" ? "bg-[#003366] hover:bg-[#002244] text-white" : ""}><LayoutGrid size={16} className="mr-2" />Kanban</Button></div></div></CardContent></Card>
-              {viewModeConsolidado === "table" ? (
-                <Card className="border border-gray-200"><CardHeader className="pt-3 pb-1"><CardTitle className="text-xl text-black px-[0px] py-[8px]">Contratações Diretas</CardTitle></CardHeader><CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]"><div className="w-full overflow-x-auto"><Table><TableHeader><TableRow><SortableTableHead label="Número do Processo" onClick={() => sortDiretas("numeroProcesso")} currentDirection={configDiretas.key === "numeroProcesso" ? configDiretas.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" /><SortableTableHead label="Empresa" onClick={() => sortDiretas("empresaVencedora")} currentDirection={configDiretas.key === "empresaVencedora" ? configDiretas.direction : null} className="min-w-[220px]" /><SortableTableHead label="Valor" onClick={() => sortDiretas("valor")} currentDirection={configDiretas.key === "valor" ? configDiretas.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[160px]">Fim Vigência</TableHead><SortableTableHead label="Status" onClick={() => sortDiretas("statusContrato")} currentDirection={configDiretas.key === "statusContrato" ? configDiretas.direction : null} className="min-w-[160px]" /><TableHead className="min-w-[140px]">Ações</TableHead></TableRow></TableHeader><TableBody>{sortedDiretas.map((processo) => (<TableRow key={processo.numeroProcesso}><TableCell className="text-black sticky left-0 z-10 bg-white">{processo.numeroProcesso}</TableCell><TableCell className="text-black">{processo.empresaVencedora}</TableCell><TableCell className="text-black">{processo.valor}</TableCell><TableCell className="text-gray-600">{processo.dataFimVigencia}</TableCell><TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.statusContrato === "Em Renovação" ? "Próximo ao Vencimento" : processo.statusContrato)}>{processo.statusContrato}</BadgeStatus></TableCell><TableCell><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={16} className="text-gray-600" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => { handleVerDetalhes("consolidado", processo); }}>Ver Detalhes</DropdownMenuItem><DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsEditConsolidadoModalOpen(true); }}>Editar</DropdownMenuItem><DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsAditivoModalOpen(true); }}>Registrar Aditivo</DropdownMenuItem><DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsProrrogacaoModalOpen(true); }}>Prorrogar Contrato</DropdownMenuItem></DropdownMenuContent></DropdownMenu></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
-              ) : (
-                <div className="flex gap-4 overflow-x-auto pb-4">{statusKanbanConsolidado.map((status) => {const processosPorStatus = diretasComprador.filter((processo) => processo.statusContrato === status);const config = kanbanConsolidadoColumnConfig[status];return (<div key={status} className="flex-1 min-w-[280px]" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {e.preventDefault();const processoData = e.dataTransfer.getData("processo-consolidado");if (!processoData) return;try {const draggedProcesso = JSON.parse(processoData) as ProcessoConsolidado;const draggedStatus = normalizeStatusContratoComprador(draggedProcesso.statusContrato);if (draggedStatus !== status) {handleStatusConsolidadoChange(draggedProcesso.numeroProcesso, status);}} catch {toast.error("Falha ao mover card");}}}><Card className={`border-2 ${config.borderColor} h-full ${config.bgColor}`}><CardHeader className="pb-3"><div className="flex items-center justify-between"><CardTitle className={`text-base ${config.color}`}>{config.displayName}</CardTitle><span className={`text-sm ${config.color} bg-white px-2 py-1 rounded border ${config.borderColor}`}>{processosPorStatus.length}</span></div></CardHeader><CardContent className="space-y-3 min-h-[360px] max-h-[calc(100vh-400px)] overflow-y-auto">{processosPorStatus.length === 0 ? (<p className="text-gray-400 text-center text-sm py-8">Nenhum contrato neste status</p>) : (processosPorStatus.map((processo) => (<div key={processo.numeroProcesso} className="cursor-grab active:cursor-grabbing" onDragStart={(e) => {e.dataTransfer.setData("processo-consolidado", JSON.stringify(processo));e.currentTarget.style.opacity = "0.5";}} onDragEnd={(e) => {e.currentTarget.style.opacity = "1";}} draggable><Card className="border border-gray-200 bg-white hover:shadow-md transition-shadow"><CardContent className="p-4"><div className="space-y-3"><div className="flex items-start justify-between gap-2"><p className="font-medium text-black flex-1">{processo.empresaVencedora}</p><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-6 w-6 p-0"><MoreVertical size={14} className="text-gray-600" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => {handleVerDetalhes("consolidado", processo);}}>Ver Detalhes</DropdownMenuItem><DropdownMenuItem onClick={() => {setSelectedConsolidado(processo);setIsEditConsolidadoModalOpen(true);}}>Editar</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div><div className="space-y-2 text-sm"><div><span className="text-gray-500">Número do Processo: </span><span className="text-gray-700">{processo.numeroProcesso}</span></div><div><span className="text-gray-500">Valor: </span><span className="text-gray-700">{processo.valor}</span></div><div><span className="text-gray-500">Fim Vigência: </span><span className="text-gray-700">{processo.dataFimVigencia}</span></div></div><div><BadgeStatus {...getBadgeMappingForStatus(processo.statusContrato === "Em Renovação" ? "Próximo ao Vencimento" : processo.statusContrato)}>{processo.statusContrato}</BadgeStatus></div></div></CardContent></Card></div>)))}</CardContent></Card></div>);})}</div>
-              )}
-            </>
-          )}
-        </TabsContent>
-        )}
-
-        {perfil === "admin" && (
-        <TabsContent value="licitacoes" className="space-y-6 mt-6">
-          <Card className="border border-gray-200"><CardHeader className="pt-3 pb-1"><CardTitle className="text-xl text-black px-[0px] py-[8px]">Licitações Homologadas</CardTitle></CardHeader><CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px] space-y-4"><div className="flex flex-col md:flex-row gap-4"><div className="flex-1"><div className="relative"><Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" /><Input placeholder="Buscar por número, requisitante ou empresa..." value={searchTermConsolidado} onChange={(e) => setSearchTermConsolidado(e.target.value)} className="pl-10" /></div></div><div className="w-full md:w-56"><Select value={statusFilterConsolidado} onValueChange={setStatusFilterConsolidado}><SelectTrigger><SelectValue placeholder="Status do Contrato" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os Status</SelectItem>{perfil === "admin" ? <SelectItem value="Próximo ao Vencimento">Próximo ao Vencimento</SelectItem> : <SelectItem value="Em Renovação">Em Renovação</SelectItem>}<SelectItem value="Ativo">Ativo</SelectItem><SelectItem value="Vencido">Vencido</SelectItem></SelectContent></Select></div></div><div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg"><Table><TableHeader><TableRow><SortableTableHead label="Número do Processo" onClick={() => sortLicitacoes("numeroProcesso")} currentDirection={configLicitacoes.key === "numeroProcesso" ? configLicitacoes.direction : null} className="sticky left-0 z-10 min-w-[170px] bg-white" /><SortableTableHead label="Requisitante" onClick={() => sortLicitacoes("requisitante")} currentDirection={configLicitacoes.key === "requisitante" ? configLicitacoes.direction : null} className="min-w-[220px]" /><SortableTableHead label="Objeto" onClick={() => sortLicitacoes("objeto")} currentDirection={configLicitacoes.key === "objeto" ? configLicitacoes.direction : null} className="min-w-[320px]" /><TableHead className="min-w-[240px]">Tipo/Modalidade</TableHead><SortableTableHead label="Status" onClick={() => sortLicitacoes("status")} currentDirection={configLicitacoes.key === "status" ? configLicitacoes.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[160px]">Responsável</TableHead><TableHead className="min-w-[140px]">Data Recebimento</TableHead><TableHead className="min-w-[140px]">Data Finalização</TableHead><TableHead className="min-w-[150px]">Data Homologação</TableHead><TableHead className="min-w-[150px]">Tempo Total (Dias)</TableHead><SortableTableHead label="Valor" onClick={() => sortLicitacoes("valor")} currentDirection={configLicitacoes.key === "valor" ? configLicitacoes.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[140px]">Ações</TableHead></TableRow></TableHeader><TableBody>{sortedLicitacoes.map((processo) => (<TableRow key={processo.numeroProcesso}><TableCell className="text-black sticky left-0 z-10 bg-white">{processo.numeroProcesso}</TableCell><TableCell className="text-gray-600">{processo.requisitante}</TableCell><TableCell className="text-gray-600">{processo.objeto}</TableCell><TableCell className="text-gray-600">{processo.tipo}</TableCell><TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus></TableCell><TableCell className="text-gray-600">{processo.responsavel}</TableCell><TableCell className="text-gray-600">{processo.dataRecebimento}</TableCell><TableCell className="text-gray-600">{processo.dataFinalizacao}</TableCell><TableCell className="text-gray-600">{processo.dataHomologacao ?? "-"}</TableCell><TableCell className="text-gray-600">{processo.tempoTotalDias ?? "-"}</TableCell><TableCell className="text-black">{processo.valor}</TableCell><TableCell><div className="flex items-center gap-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", processo)}><Info size={16} className="text-gray-600" /></Button><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedConsolidado(processo); setIsEditConsolidadoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical size={16} className="text-gray-600" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsAditivoModalOpen(true); }}><FileText size={16} className="mr-2" />Registrar Aditivo</DropdownMenuItem><DropdownMenuItem onClick={() => { setSelectedConsolidado(processo); setIsProrrogacaoModalOpen(true); }}><Calendar size={16} className="mr-2" />Prorrogar Contrato</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
-        </TabsContent>
-        )}
-
-        {perfil === "admin" && (
-          <TabsContent value="trp" className="space-y-6 mt-6">
-            <Card className="border border-gray-200"><CardHeader className="pt-3 pb-1"><CardTitle className="text-xl text-black px-[0px] py-[8px]">TRP</CardTitle></CardHeader><CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px] space-y-4"><div className="flex flex-col md:flex-row gap-4"><div className="flex-1"><div className="relative"><Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" /><Input placeholder="Buscar por empresa, CNPJ ou número..." value={searchTermTRP} onChange={(e) => setSearchTermTRP(e.target.value)} className="pl-10" /></div></div><div className="w-full md:w-48"><Select value={filterTRP} onValueChange={setFilterTRP}><SelectTrigger><SelectValue placeholder="Filtrar Aditivos" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="com-aditivos">Com Aditivos</SelectItem><SelectItem value="sem-aditivos">Sem Aditivos</SelectItem></SelectContent></Select></div></div><div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg"><Table><TableHeader><TableRow><SortableTableHead label="Empresa Vencedora" onClick={() => sortTRP("empresaVencedora")} currentDirection={configTRP.key === "empresaVencedora" ? configTRP.direction : null} className="min-w-[220px]" /><TableHead className="min-w-[180px]">CNPJ</TableHead><SortableTableHead label="Número do Processo" onClick={() => sortTRP("numeroProcesso")} currentDirection={configTRP.key === "numeroProcesso" ? configTRP.direction : null} className="min-w-[160px]" /><SortableTableHead label="Valor Contratado" onClick={() => sortTRP("valorContratado")} currentDirection={configTRP.key === "valorContratado" ? configTRP.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[120px]">Vigência</TableHead><TableHead className="min-w-[100px]">Aditivos</TableHead><TableHead className="min-w-[100px]">Ações</TableHead></TableRow></TableHeader><TableBody>{sortedTRP.map((trp) => (<TableRow key={trp.numeroProcesso}><TableCell className="text-black">{trp.empresaVencedora}</TableCell><TableCell className="text-gray-600">{trp.cnpj}</TableCell><TableCell className="text-black">{trp.numeroProcesso}</TableCell><TableCell className="text-black">{trp.valorContratado}</TableCell><TableCell className="text-gray-600">{trp.vigencia}</TableCell><TableCell className="text-gray-600">{trp.aditivos}</TableCell><TableCell><div className="flex items-center gap-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", trp)}><Info size={16} className="text-gray-600" /></Button><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedTRP(trp); setIsEditTRPModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button></div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
-          </TabsContent>
-        )}
-
-        {perfil === "admin" && (
-          <TabsContent value="contratos" className="space-y-6 mt-6">
-            <Card className="border border-gray-200"><CardHeader className="pt-3 pb-1"><CardTitle className="text-xl text-black px-[0px] py-[8px]">Contratos</CardTitle></CardHeader><CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px] space-y-4"><div className="flex flex-col md:flex-row gap-4"><div className="flex-1"><div className="relative"><Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" /><Input placeholder="Buscar por empresa, CNPJ ou número..." value={searchTermContratos} onChange={(e) => setSearchTermContratos(e.target.value)} className="pl-10" /></div></div><div className="w-full md:w-48"><Select value={filterContratos} onValueChange={setFilterContratos}><SelectTrigger><SelectValue placeholder="Filtrar Aditivos" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos</SelectItem><SelectItem value="com-aditivos">Com Aditivos</SelectItem><SelectItem value="sem-aditivos">Sem Aditivos</SelectItem></SelectContent></Select></div></div><div className="w-full overflow-x-auto max-h-[600px] overflow-y-auto border rounded-lg"><Table><TableHeader><TableRow><SortableTableHead label="Empresa Vencedora" onClick={() => sortContratos("empresaVencedora")} currentDirection={configContratos.key === "empresaVencedora" ? configContratos.direction : null} className="min-w-[220px]" /><TableHead className="min-w-[180px]">CNPJ</TableHead><SortableTableHead label="Número do Processo" onClick={() => sortContratos("numeroProcesso")} currentDirection={configContratos.key === "numeroProcesso" ? configContratos.direction : null} className="min-w-[160px]" /><SortableTableHead label="Valor Contratado" onClick={() => sortContratos("valorContratado")} currentDirection={configContratos.key === "valorContratado" ? configContratos.direction : null} className="min-w-[140px]" /><TableHead className="min-w-[120px]">Vigência</TableHead><TableHead className="min-w-[100px]">Aditivos</TableHead><TableHead className="min-w-[100px]">Ações</TableHead></TableRow></TableHeader><TableBody>{sortedContratos.map((contrato) => (<TableRow key={contrato.numeroProcesso}><TableCell className="text-black">{contrato.empresaVencedora}</TableCell><TableCell className="text-gray-600">{contrato.cnpj}</TableCell><TableCell className="text-black">{contrato.numeroProcesso}</TableCell><TableCell className="text-black">{contrato.valorContratado}</TableCell><TableCell className="text-gray-600">{contrato.vigencia}</TableCell><TableCell className="text-gray-600">{contrato.aditivos}</TableCell><TableCell><div className="flex items-center gap-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleVerDetalhes("consolidado", contrato)}><Info size={16} className="text-gray-600" /></Button><Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => { setSelectedContrato(contrato); setIsEditContratoModalOpen(true); }}><Edit size={16} className="text-gray-600" /></Button></div></TableCell></TableRow>))}</TableBody></Table></div></CardContent></Card>
-          </TabsContent>
-        )}
       </Tabs>
+
+      <Dialog open={isNovaDemandaModalOpen} onOpenChange={setIsNovaDemandaModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+          <div className="flex-1 overflow-y-auto px-6">
+            <DialogHeader className="pt-6">
+              <DialogTitle>Cadastrar Nova Demanda (RC)</DialogTitle>
+              <DialogDescription>Registre manualmente uma nova Requisição de Compra.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4 pb-6">
+              <Alert className="bg-blue-50 border-blue-200">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-800">
+                  Após o cadastro, você poderá distribuir esta demanda para um comprador.
+                </AlertDescription>
+              </Alert>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="nova-rc-numero">Número da RC</Label>
+                  <Input id="nova-rc-numero" placeholder="Ex: RC 123/2026" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="nova-rc-data">Data de Recebimento</Label>
+                  <Input id="nova-rc-data" type="date" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nova-rc-objeto">Objeto da Compra</Label>
+                <Textarea id="nova-rc-objeto" rows={3} placeholder="Descreva o objeto da requisição..." />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="nova-rc-prioridade">Prioridade</Label>
+                  <Select defaultValue="Média">
+                    <SelectTrigger id="nova-rc-prioridade">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Alta">Alta</SelectItem>
+                      <SelectItem value="Média">Média</SelectItem>
+                      <SelectItem value="Baixa">Baixa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="nova-rc-categoria">Categoria</Label>
+                  <Input id="nova-rc-categoria" placeholder="Equipamentos / Serviços / Materiais" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="border-t bg-white pt-4 pb-4 px-6 flex gap-2 rounded-t-[0px] rounded-b-[8px]">
+            <Button variant="outline" className="flex-1" onClick={() => setIsNovaDemandaModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
+              onClick={() => {
+                toast.success("Demanda cadastrada com sucesso!");
+                setIsNovaDemandaModalOpen(false);
+              }}
+            >
+              Cadastrar Demanda
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isNewProcessModalOpen} onOpenChange={setIsNewProcessModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+          <div className="flex-1 overflow-y-auto px-6">
+            <DialogHeader className="pt-6">
+              <DialogTitle>Cadastrar Novo Processo</DialogTitle>
+              <DialogDescription>Crie um novo processo operacional de compras.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4 pb-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-proc-id">ID do Processo</Label>
+                  <Input id="novo-proc-id" placeholder="Ex: 0029/26-PG ou 0005/26-CC" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-proc-rc">ID Requisição</Label>
+                  <Input id="novo-proc-rc" placeholder="Ex: RC 123/2026" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-proc-modalidade">Tipo/Modalidade</Label>
+                  <Select defaultValue="Dispensa">
+                    <SelectTrigger id="novo-proc-modalidade">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Dispensa">Dispensa</SelectItem>
+                      <SelectItem value="Inexigibilidade">Inexigibilidade</SelectItem>
+                      <SelectItem value="Licitacao (Pesquisa de Preco)">Licitação (Pesquisa de Preço)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-proc-status">Status Inicial</Label>
+                  <Select defaultValue={statusAndamentoPadrao[0]}>
+                    <SelectTrigger id="novo-proc-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusAndamentoPadrao.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="novo-proc-objeto">Objeto</Label>
+                <Textarea id="novo-proc-objeto" rows={2} placeholder="Descreva o objeto do processo..." />
+              </div>
+              <div className="grid gap-3 rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-black">Bloquear envio automático de notificação</p>
+                    <p className="text-xs text-gray-500">Use para manter o envio sob controle manual.</p>
+                  </div>
+                  <Switch checked={bloquearEnvioAutomatico} onCheckedChange={setBloquearEnvioAutomatico} />
+                </div>
+                {bloquearEnvioAutomatico && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="classificacao-pedido">Classificação do Pedido</Label>
+                    <Select value={classificacaoPedido} onValueChange={setClassificacaoPedido}>
+                      <SelectTrigger id="classificacao-pedido">
+                        <SelectValue placeholder="Selecione a classificação" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="urgente">Urgente</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="planejado">Planejado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="border-t bg-white pt-4 pb-4 px-6 flex gap-2 rounded-t-[0px] rounded-b-[8px]">
+            <Button variant="outline" className="flex-1" onClick={() => setIsNewProcessModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
+              onClick={() => {
+                toast.success("Processo cadastrado com sucesso!");
+                setIsNewProcessModalOpen(false);
+                setBloquearEnvioAutomatico(false);
+                setClassificacaoPedido("");
+              }}
+            >
+              Cadastrar Processo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isNewConsolidadoModalOpen} onOpenChange={setIsNewConsolidadoModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+          <div className="flex-1 overflow-y-auto px-6">
+            <DialogHeader className="pt-6">
+              <DialogTitle>Cadastrar Processo Consolidado</DialogTitle>
+              <DialogDescription>Registre um novo processo consolidado para gestão de contratos.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4 pb-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-cons-numero">Número do Processo</Label>
+                  <Input id="novo-cons-numero" placeholder="Ex: SESC-MA-2026-CS-001" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-cons-valor">Valor</Label>
+                  <Input id="novo-cons-valor" placeholder="R$ 0,00" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="novo-cons-empresa">Empresa Vencedora</Label>
+                <Input id="novo-cons-empresa" placeholder="Razão social da empresa" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-cons-status">Status do Contrato</Label>
+                  <Select defaultValue="Ativo">
+                    <SelectTrigger id="novo-cons-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Ativo">Ativo</SelectItem>
+                      <SelectItem value="Próximo ao Vencimento">Próximo ao Vencimento</SelectItem>
+                      <SelectItem value="Vencido">Vencido</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-cons-vigencia">Fim de Vigência</Label>
+                  <Input id="novo-cons-vigencia" type="date" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="border-t bg-white pt-4 pb-4 px-6 flex gap-2 rounded-t-[0px] rounded-b-[8px]">
+            <Button variant="outline" className="flex-1" onClick={() => setIsNewConsolidadoModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
+              onClick={() => {
+                toast.success("Processo consolidado cadastrado com sucesso!");
+                setIsNewConsolidadoModalOpen(false);
+              }}
+            >
+              Cadastrar Consolidado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o processo <strong>{processoToDelete?.id}</strong>? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setProcessoToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (processoToDelete) {
+                  toast.success(`Processo ${processoToDelete.id} excluído com sucesso!`);
+                }
+                setIsDeleteDialogOpen(false);
+                setProcessoToDelete(null);
+              }}
+            >
+              Excluir Processo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={isStatusChangeModalOpen} onOpenChange={setIsStatusChangeModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar Status do Processo</DialogTitle>
+            <DialogDescription>
+              Você está alterando o status de <strong>{processoParaMudarStatus?.id}</strong> para <strong>{novoStatus}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <Label htmlFor="justificativa-status">Justificativa / Observação (opcional)</Label>
+            <Textarea
+              id="justificativa-status"
+              rows={4}
+              value={justificativaStatus}
+              onChange={(e) => setJustificativaStatus(e.target.value)}
+              placeholder="Digite uma justificativa para esta mudança de status..."
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsStatusChangeModalOpen(false);
+                setProcessoParaMudarStatus(null);
+                setNovoStatus("");
+                setJustificativaStatus("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={handleConfirmarMudancaStatus}>
+              Confirmar Alteração
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAtribuirModalOpen} onOpenChange={setIsAtribuirModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Distribuir Requisição</DialogTitle>
+            <DialogDescription>Atribua um comprador e defina a data de início para cálculo de Lead Time.</DialogDescription>
+          </DialogHeader>
+          {selectedRequisicao && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2 rounded-lg bg-gray-50 p-4">
+                <p className="text-sm"><span className="text-black">ID:</span> <span className="text-gray-600">{selectedRequisicao.id}</span></p>
+                <p className="text-sm"><span className="text-black">Requisitante:</span> <span className="text-gray-600">{selectedRequisicao.requisitante}</span></p>
+                <p className="text-sm"><span className="text-black">Objeto:</span> <span className="text-gray-600">{selectedRequisicao.objeto}</span></p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="atribuir-comprador">Comprador Responsável</Label>
+                <Select value={compradorSelecionado} onValueChange={setCompradorSelecionado}>
+                  <SelectTrigger id="atribuir-comprador">
+                    <SelectValue placeholder="Selecione o comprador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {compradoresDisponiveis.map((comprador) => (
+                      <SelectItem key={comprador} value={comprador}>
+                        {comprador}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="atribuir-inicio">Data de Início</Label>
+                <Input
+                  id="atribuir-inicio"
+                  type="date"
+                  value={dataInicioDistribuicao}
+                  onChange={(e) => setDataInicioDistribuicao(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAtribuirModalOpen(false);
+                setSelectedRequisicao(null);
+                setCompradorSelecionado("");
+                setDataInicioDistribuicao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-[#003366] hover:bg-[#002244] text-white"
+              onClick={handleAtribuirComprador}
+              disabled={!compradorSelecionado || !dataInicioDistribuicao}
+            >
+              Distribuir Requisição
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isConfigurarModalOpen} onOpenChange={setIsConfigurarModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0">
+          <div className="flex-1 overflow-y-auto px-6">
+            <DialogHeader className="pt-6">
+              <DialogTitle>Iniciar Processo - Configuração de Governança</DialogTitle>
+              <DialogDescription>
+                Transforme esta requisição em um processo ativo preenchendo os dados obrigatórios.
+              </DialogDescription>
+            </DialogHeader>
+            {requisicaoParaConfigurar && (
+              <div className="space-y-4 py-4 pb-6">
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-1">
+                  <p className="text-sm text-blue-900"><strong>Requisição:</strong> {requisicaoParaConfigurar.numeroRequisicao ?? requisicaoParaConfigurar.id}</p>
+                  <p className="text-sm text-blue-900"><strong>Requisitante:</strong> {requisicaoParaConfigurar.requisitante}</p>
+                  <p className="text-sm text-blue-900"><strong>Objeto:</strong> {requisicaoParaConfigurar.objeto ?? requisicaoParaConfigurar.descricao}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="config-modalidade">Modalidade</Label>
+                    <Select defaultValue={requisicaoParaConfigurar.modalidade}>
+                      <SelectTrigger id="config-modalidade">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Dispensa">Dispensa</SelectItem>
+                        <SelectItem value="Inexigibilidade">Inexigibilidade</SelectItem>
+                        <SelectItem value="Licitacao (Pesquisa de Preco)">Licitação (Pesquisa de Preço)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="config-status">Status Inicial</Label>
+                    <Select defaultValue={statusAndamentoPadrao[0]}>
+                      <SelectTrigger id="config-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusAndamentoPadrao.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="border-t bg-white pt-4 pb-4 px-6 flex gap-2 rounded-t-[0px] rounded-b-[8px]">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setIsConfigurarModalOpen(false);
+                setRequisicaoParaConfigurar(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
+              onClick={() => {
+                toast.success("Processo iniciado com sucesso!");
+                setIsConfigurarModalOpen(false);
+                setRequisicaoParaConfigurar(null);
+              }}
+            >
+              Iniciar Processo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isPriorityModalOpen}
+        onOpenChange={(open) => {
+          setIsPriorityModalOpen(open);
+          if (!open) {
+            setReqParaPrioridade(null);
+            setNovaPrioridade("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Alterar Prioridade</DialogTitle>
+            <DialogDescription>Defina a nova prioridade para a requisição {reqParaPrioridade?.id}.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Select value={novaPrioridade} onValueChange={(value) => setNovaPrioridade(value as PrioridadeRequisicao)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a prioridade" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Alta">Alta</SelectItem>
+                <SelectItem value="Média">Média</SelectItem>
+                <SelectItem value="Baixa">Baixa</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPriorityModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-[#003366] hover:bg-[#002244] text-white"
+              onClick={() => {
+                toast.success("Prioridade alterada com sucesso!");
+                setIsPriorityModalOpen(false);
+                setReqParaPrioridade(null);
+                setNovaPrioridade("");
+              }}
+            >
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {requisicaoParaDetalhes && (
+        <Dialog open={!!requisicaoParaDetalhes} onOpenChange={(open) => !open && setRequisicaoParaDetalhes(null)}>
+          <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+            <div className="flex-1 overflow-y-auto px-6">
+              <DialogHeader className="pt-6">
+                <DialogTitle>Detalhes da Requisição</DialogTitle>
+                <DialogDescription>Informações completas da requisição {requisicaoParaDetalhes.id}.</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4 pb-6">
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">ID Requisição</Label>
+                  <p className="text-black">{requisicaoParaDetalhes.id}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Data de Recebimento</Label>
+                  <p className="text-black">{requisicaoParaDetalhes.dataRecebimento}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Requisitante</Label>
+                  <p className="text-black">{requisicaoParaDetalhes.requisitante}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Regional</Label>
+                  <p className="text-black">{requisicaoParaDetalhes.regional}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Categoria</Label>
+                  <p className="text-black">{requisicaoParaDetalhes.categoria}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Valor Estimado</Label>
+                  <p className="text-black">{requisicaoParaDetalhes.valorEstimado}</p>
+                </div>
+                <div className="space-y-1 col-span-2">
+                  <Label className="text-xs text-gray-500">Objeto</Label>
+                  <p className="text-black">{requisicaoParaDetalhes.objeto}</p>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="border-t bg-white pt-4 pb-4 px-6 rounded-t-[0px] rounded-b-[8px]">
+              <Button className="flex-1 bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setRequisicaoParaDetalhes(null)}>
+                Fechar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Modal de Detalhes do Processo */}
       <DetalhesProcessoModal
@@ -1410,7 +2786,12 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-consolidado-id">Número do Processo</Label>
-                  <Input id="edit-consolidado-id" defaultValue={selectedConsolidado?.numeroProcesso} disabled />
+                  <Input
+                    id="edit-consolidado-id"
+                    defaultValue={selectedConsolidado?.numeroProcesso}
+                    placeholder="Ex: SESC-MA-2026-CS-001"
+                    disabled
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-consolidado-valor">Valor (R$)</Label>
@@ -1491,7 +2872,12 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-trp-numero">Número do Processo</Label>
-                  <Input id="edit-trp-numero" defaultValue={selectedTRP?.numeroProcesso} disabled />
+                  <Input
+                    id="edit-trp-numero"
+                    defaultValue={selectedTRP?.numeroProcesso}
+                    placeholder="Ex: 0029/26-PG SRP"
+                    disabled
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1553,7 +2939,12 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-contrato-numero">Número do Processo</Label>
-                  <Input id="edit-contrato-numero" defaultValue={selectedContrato?.numeroProcesso} disabled />
+                  <Input
+                    id="edit-contrato-numero"
+                    defaultValue={selectedContrato?.numeroProcesso}
+                    placeholder="Ex: SESC-MA-2026-CS-001"
+                    disabled
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1613,7 +3004,7 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="aditivo-numero">Número do Aditivo</Label>
-                  <Input id="aditivo-numero" placeholder="001/2024" />
+                  <Input id="aditivo-numero" placeholder="Ex: 01/2026" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="aditivo-data">Data do Aditivo</Label>
@@ -1685,7 +3076,7 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="prorrogacao-numero">Número da Prorrogação</Label>
-                  <Input id="prorrogacao-numero" placeholder="001/2024" />
+                  <Input id="prorrogacao-numero" placeholder="Ex: 01/2026" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="prorrogacao-data">Data da Prorrogação</Label>
