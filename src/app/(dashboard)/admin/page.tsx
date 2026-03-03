@@ -33,7 +33,7 @@ import type { Processo } from "@/types";
 const recentActivities = [
     { title: "Processo #2024-001 aprovado", time: "Há 2 horas", status: "Aprovado", iconBg: "bg-[#00bc7d]" },
     { title: "Processo #2024-002 em andamento", time: "Há 4 horas", status: "Em Andamento", iconBg: "bg-[#fe9a00]" },
-    { title: "Alerta de penalidade - Contrato #C789", time: "Há 6 horas", status: "Em Análise", iconBg: "bg-[#fb2c36]" },
+    { title: "Alerta de penalidade - Contrato #C789", time: "Há 6 horas", status: "Em Andamento", iconBg: "bg-[#fb2c36]" },
 ];
 
 function isModalidadeLicitacao(modalidade: string): boolean {

@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { Calendar, Edit, FileText, Info, LayoutGrid, List, MoreVertical, Search } from "lucide-react";
 import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { BadgeNew } from "@/components/ui/badge-new";
 import { BadgeStatus } from "@/components/ui/badge-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
 import { useTableSort } from "@/hooks/useTableSort";
-import { getBadgeMappingForStatus } from "@/lib/badge-mappings";
+import { getBadgeMappingForPrioridade, getBadgeMappingForStatus } from "@/lib/badge-mappings";
 import type { Processo } from "@/types";
 import { DetalhesProcessoModal } from "./DetalhesProcessoModal";
 
@@ -383,10 +385,14 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
 
   const [searchTermConsolidado, setSearchTermConsolidado] = useState("");
   const [statusFilterConsolidado, setStatusFilterConsolidado] = useState("todos");
+  const [searchTermAtribuidas, setSearchTermAtribuidas] = useState("");
+  const [prioridadeFilterAtribuidas, setPrioridadeFilterAtribuidas] = useState("todas");
   const [searchTermTRP, setSearchTermTRP] = useState("");
   const [filterTRP, setFilterTRP] = useState("todos");
   const [searchTermContratos, setSearchTermContratos] = useState("");
   const [filterContratos, setFilterContratos] = useState("todos");
+  const [, setIsConfigurarModalOpen] = useState(false);
+  const [, setRequisicaoParaConfigurar] = useState<Processo | null>(null);
 
   const [processosDiarios, setProcessosDiarios] = useState<Processo[]>(() => generateMockProcessos());
   const [processosConsolidados, setProcessosConsolidados] = useState<ProcessoConsolidado[]>(processosConsolidadosMock);
@@ -450,6 +456,31 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
       tramitando: processosDiariosPerfil.filter((p) => p.status === "Tramitando para aprovação").length,
     }),
     [processosDiariosPerfil],
+  );
+
+  const requisicoesAtribuidasCounts = useMemo(
+    () => ({
+      total: processosDiariosPerfil.length,
+      alta: processosDiariosPerfil.filter((req) => req.prioridade === "Alta").length,
+      media: processosDiariosPerfil.filter((req) => req.prioridade === "Média").length,
+      baixa: processosDiariosPerfil.filter((req) => req.prioridade === "Baixa").length,
+    }),
+    [processosDiariosPerfil],
+  );
+
+  const filteredRequisicoesAtribuidas = useMemo(
+    () =>
+      processosDiariosPerfil.filter((req) => {
+        const busca = [req.numeroRequisicao ?? req.id, req.requisitante ?? "", req.objeto ?? req.descricao ?? ""]
+          .join(" ")
+          .toLowerCase();
+        const matchesSearch = busca.includes(searchTermAtribuidas.toLowerCase());
+        const matchesPrioridade =
+          prioridadeFilterAtribuidas === "todas" || req.prioridade === prioridadeFilterAtribuidas;
+
+        return matchesSearch && matchesPrioridade;
+      }),
+    [processosDiariosPerfil, searchTermAtribuidas, prioridadeFilterAtribuidas],
   );
 
   const processosConsolidadosPerfil = useMemo(
@@ -1009,14 +1040,146 @@ export function ProcessosModule({ perfil }: ProcessosModuleProps) {
 
         {perfil === "comprador" && (
           <TabsContent value="atribuidas" className="space-y-6 mt-6">
+            <Alert className="border-blue-200 bg-blue-50">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                Revise as requisições atribuídas e inicie o processo para configurar modalidade, responsável e fluxo.
+              </AlertDescription>
+            </Alert>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-black">{requisicoesAtribuidasCounts.total}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Total</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#e7000b]">{requisicoesAtribuidasCounts.alta}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Prioridade Alta</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#f97316]">{requisicoesAtribuidasCounts.media}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Prioridade Média</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200">
+                <CardContent className="flex flex-col items-center justify-center h-full py-6">
+                  <div className="flex flex-col gap-1 items-center justify-center text-center">
+                    <p className="text-2xl leading-8 text-[#155dfc]">{requisicoesAtribuidasCounts.baixa}</p>
+                    <p className="text-xs leading-4 text-[#4a5565]">Prioridade Baixa</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card className="border border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-lg">Requisições Atribuídas</CardTitle>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                      <Input
+                        placeholder="Buscar por ID, requisitante ou objeto..."
+                        value={searchTermAtribuidas}
+                        onChange={(e) => setSearchTermAtribuidas(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="w-full md:w-48">
+                    <Select value={prioridadeFilterAtribuidas} onValueChange={setPrioridadeFilterAtribuidas}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Prioridade" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas as Prioridades</SelectItem>
+                        <SelectItem value="Alta">Alta</SelectItem>
+                        <SelectItem value="Média">Média</SelectItem>
+                        <SelectItem value="Baixa">Baixa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-gray-200">
+              <CardHeader className="pt-3 pb-1">
+                <CardTitle className="text-xl text-black px-[0px] py-[8px]">Requisições Atribuídas a Você</CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600">
-                  As requisições atribuídas ao comprador são acompanhadas na aba de processos em andamento.
-                </p>
+              <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]">
+                <div className="w-full overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="sticky left-0 z-10 min-w-[140px] bg-white">ID Requisição</TableHead>
+                        <TableHead className="min-w-[200px]">Requisitante</TableHead>
+                        <TableHead className="min-w-[300px]">Objeto</TableHead>
+                        <TableHead className="min-w-[160px]">Responsável</TableHead>
+                        <TableHead className="min-w-[140px]">Prioridade</TableHead>
+                        <TableHead className="min-w-[190px]">Status</TableHead>
+                        <TableHead className="min-w-[140px]">Data Finalização</TableHead>
+                        <TableHead className="min-w-[200px] text-center">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRequisicoesAtribuidas.length > 0 ? (
+                        filteredRequisicoesAtribuidas.map((requisicao) => (
+                          <TableRow key={requisicao.id}>
+                            <TableCell className="text-black sticky left-0 z-10 bg-white">
+                              {requisicao.numeroRequisicao ?? requisicao.id}
+                            </TableCell>
+                            <TableCell className="text-gray-600">{requisicao.requisitante ?? "-"}</TableCell>
+                            <TableCell className="text-gray-600">{requisicao.objeto ?? requisicao.descricao}</TableCell>
+                            <TableCell className="text-gray-600">{requisicao.responsavel}</TableCell>
+                            <TableCell>
+                              <BadgeNew {...getBadgeMappingForPrioridade(requisicao.prioridade ?? "Baixa")}>
+                                {requisicao.prioridade ?? "Baixa"}
+                              </BadgeNew>
+                            </TableCell>
+                            <TableCell>
+                              <BadgeNew intent="warning" weight="heavy" size="md">
+                                Aguardando Configuração
+                              </BadgeNew>
+                            </TableCell>
+                            <TableCell className="text-gray-600">{requisicao.dataFinalizacao ?? "-"}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center">
+                                <Button
+                                  size="sm"
+                                  className="bg-[#003366] hover:bg-[#002244] text-white"
+                                  onClick={() => {
+                                    setRequisicaoParaConfigurar(requisicao);
+                                    setIsConfigurarModalOpen(true);
+                                  }}
+                                >
+                                  <FileText size={16} className="mr-2" />
+                                  Iniciar Processo
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                            Nenhuma requisição atribuída encontrada com os filtros aplicados.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

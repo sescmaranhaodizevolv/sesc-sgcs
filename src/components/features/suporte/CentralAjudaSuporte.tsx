@@ -27,12 +27,14 @@ import {
   Send,
   Upload,
   Search,
+  User,
   X,
   FileText,
   Download
 } from 'lucide-react';
 import { FileInput } from '@/components/ui/file-input';
 import { getBadgeMappingForPrioridade } from '@/lib/badge-mappings';
+import { toast } from "sonner";
 
 interface CentralAjudaSuporteProps {
   onNavigateToChamado?: (chamadoId: number) => void;
@@ -58,6 +60,10 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const [searchFaqRequisitante, setSearchFaqRequisitante] = useState('');
   const [searchChamadosRequisitante, setSearchChamadosRequisitante] = useState('');
   const [searchDocumentosRequisitante, setSearchDocumentosRequisitante] = useState('');
+  const [isNovoFaqOpen, setIsNovoFaqOpen] = useState(false);
+  const [novaPergunta, setNovaPergunta] = useState('');
+  const [novaResposta, setNovaResposta] = useState('');
+  const [novaCategoria, setNovaCategoria] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: 1,
@@ -121,7 +127,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     }
   ];
 
-  const faqItems = [
+  const faqItemsIniciais = [
     {
       id: 1,
       pergunta: 'Como cadastrar um novo processo licitatório?',
@@ -207,6 +213,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
       visualizacoes: 112
     }
   ];
+  const [faqs, setFaqs] = useState(faqItemsIniciais);
 
   const faqItemsRequisitante = [
     {
@@ -502,6 +509,25 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     return tipoMap[tipo] || 'bg-gray-100 text-gray-800';
   };
 
+  const salvarNovoFaq = () => {
+    if (!novaPergunta.trim() || !novaResposta.trim() || !novaCategoria) return;
+
+    const novoFaq = {
+      id: Date.now(),
+      pergunta: novaPergunta.trim(),
+      resposta: novaResposta.trim(),
+      categoria: novaCategoria,
+      visualizacoes: 0
+    };
+
+    setFaqs(prev => [novoFaq, ...prev]);
+    toast.success("FAQ cadastrado com sucesso!");
+    setNovaPergunta('');
+    setNovaResposta('');
+    setNovaCategoria('');
+    setIsNovoFaqOpen(false);
+  };
+
   if (currentProfile === 'requisitante') {
     return (
       <div className="p-6 space-y-4">
@@ -612,11 +638,18 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                     {chatMessages.map((msg) => (
                       <div
                         key={msg.id}
-                        className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                        className={`flex items-end gap-3 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
                       >
+                        {msg.type === 'bot' && (
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-100 text-[#003366] shrink-0">
+                            <Bot size={16} />
+                          </div>
+                        )}
                         <div
-                          className={`max-w-[70%] rounded-lg p-3 ${
-                            msg.type === 'user' ? 'bg-[#003366] text-white' : 'bg-gray-100 text-black'
+                          className={`max-w-[70%] rounded-2xl p-3 ${
+                            msg.type === 'user'
+                              ? 'bg-[#003366] text-white rounded-br-none'
+                              : 'bg-gray-100 text-black rounded-bl-none'
                           }`}
                         >
                           <p className="text-sm">{msg.message}</p>
@@ -624,6 +657,11 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                             {msg.time}
                           </p>
                         </div>
+                        {msg.type === 'user' && (
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 text-gray-600 shrink-0">
+                            <User size={16} />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -983,33 +1021,53 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                 Assistente Virtual - Chatbot
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-[0px] pr-[24px] pb-[24px] pl-[24px]">
-              <div className="bg-gray-100 rounded-lg p-6 min-h-[400px] flex flex-col">
-                <div className="flex-1 space-y-4 mb-4">
-                  <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <p className="text-sm text-gray-600 mb-1">Chatbot • 10:30</p>
-                    <p className="text-sm text-black">Olá! Sou o assistente virtual do SGCS. Como posso ajudá-lo hoje?</p>
-                  </div>
-                  <div className="bg-[#003366] text-white p-4 rounded-lg shadow-sm ml-12">
-                    <p className="text-sm opacity-80 mb-1">Você • 10:31</p>
-                    <p className="text-sm">Como faço para cadastrar um novo processo?</p>
-                  </div>
-                  <div className="bg-white p-4 rounded-lg shadow-sm">
-                    <p className="text-sm text-gray-600 mb-1">Chatbot • 10:31</p>
-                    <p className="text-sm text-black">Para cadastrar um novo processo licitatório, siga estes passos:</p>
-                    <ol className="text-sm text-black mt-2 ml-4 list-decimal space-y-1">
-                      <li>Acesse o menu "Processos" na barra lateral</li>
-                      <li>Clique em "Gerenciamento de Processos"</li>
-                      <li>Clique no botão "Cadastrar Processo"</li>
-                    </ol>
-                  </div>
+            <CardContent className="p-6">
+              <div className="h-[400px] rounded-lg border border-gray-200 p-4 mb-4 overflow-y-auto">
+                <div className="space-y-4">
+                  {chatMessages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex items-end gap-3 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      {msg.type === 'bot' && (
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-100 text-[#003366] shrink-0">
+                          <Bot size={16} />
+                        </div>
+                      )}
+                      <div
+                        className={`max-w-[70%] rounded-2xl p-3 ${
+                          msg.type === 'user'
+                            ? 'bg-[#003366] text-white rounded-br-none'
+                            : 'bg-gray-100 text-black rounded-bl-none'
+                        }`}
+                      >
+                        <p className="text-sm">{msg.message}</p>
+                        <p className={`text-xs mt-1 ${msg.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
+                          {msg.time}
+                        </p>
+                      </div>
+                      {msg.type === 'user' && (
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 text-gray-600 shrink-0">
+                          <User size={16} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className="flex gap-2">
-                  <Input placeholder="Digite sua mensagem..." className="flex-1 bg-white border-gray-300" />
-                  <Button className="bg-[#003366] hover:bg-[#002244] text-white">
-                    <Send size={16} />
-                  </Button>
-                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Digite sua mensagem..."
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSendMessage();
+                  }}
+                />
+                <Button onClick={handleSendMessage} className="bg-[#003366] hover:bg-[#002244] text-white">
+                  <Send size={18} />
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -1634,14 +1692,93 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
         <TabsContent value="faq" className="space-y-4">
           <Card className="border border-gray-200">
             <CardHeader className="bg-gray-50 border-b border-gray-200">
-              <CardTitle className="flex items-center gap-2 font-normal text-[16px] py-[8px]">
-                <HelpCircle size={20} className="text-[#003366]" />
-                Perguntas Frequentes (FAQ)
-              </CardTitle>
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle className="flex items-center gap-2 font-normal text-[16px] py-[8px]">
+                  <HelpCircle size={20} className="text-[#003366]" />
+                  Perguntas Frequentes (FAQ)
+                </CardTitle>
+                {currentProfile !== 'requisitante' && (
+                  <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setIsNovoFaqOpen(true)}>
+                    <Plus size={16} className="mr-2" />
+                    Cadastrar FAQ
+                  </Button>
+                )}
+              </div>
             </CardHeader>
+            <Dialog open={isNovoFaqOpen} onOpenChange={setIsNovoFaqOpen}>
+              <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+                <div className="flex-1 overflow-y-auto px-6">
+                  <DialogHeader className="pt-6">
+                    <DialogTitle>Cadastrar Nova Pergunta (FAQ)</DialogTitle>
+                    <DialogDescription>
+                      Adicione uma nova pergunta e resposta para a base de conhecimento.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4 pb-6">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="faq-pergunta">Pergunta *</Label>
+                      <Input
+                        id="faq-pergunta"
+                        placeholder="Digite a pergunta frequente"
+                        value={novaPergunta}
+                        onChange={(e) => setNovaPergunta(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="faq-resposta">Resposta *</Label>
+                      <Textarea
+                        id="faq-resposta"
+                        rows={3}
+                        placeholder="Digite a resposta da FAQ"
+                        value={novaResposta}
+                        onChange={(e) => setNovaResposta(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="faq-categoria">Categoria *</Label>
+                      <Select value={novaCategoria} onValueChange={setNovaCategoria}>
+                        <SelectTrigger id="faq-categoria">
+                          <SelectValue placeholder="Selecione a categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Processos">Processos</SelectItem>
+                          <SelectItem value="Penalidades">Penalidades</SelectItem>
+                          <SelectItem value="Relatórios">Relatórios</SelectItem>
+                          <SelectItem value="Contratos">Contratos</SelectItem>
+                          <SelectItem value="Fornecedores">Fornecedores</SelectItem>
+                          <SelectItem value="Sistema">Sistema</SelectItem>
+                          <SelectItem value="Outros">Outros</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter className="border-t bg-white pt-4 pb-4 px-6 flex gap-2 rounded-t-[0px] rounded-b-[8px]">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setNovaPergunta('');
+                      setNovaResposta('');
+                      setNovaCategoria('');
+                      setIsNovoFaqOpen(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
+                    onClick={salvarNovoFaq}
+                    disabled={!novaPergunta.trim() || !novaResposta.trim() || !novaCategoria}
+                  >
+                    Salvar
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <CardContent className="pt-[0px] pr-[24px] pb-[24px] pl-[24px]">
               <Accordion type="multiple" className="space-y-2">
-                {faqItems.map(item => (
+                {faqs.map(item => (
                   <AccordionItem key={item.id} value={`item-${item.id}`} className="border border-gray-200 rounded-lg px-4 bg-gray-50">
                     <AccordionTrigger className="hover:no-underline py-4">
                       <div className="flex items-start justify-between gap-3 flex-1 text-left">

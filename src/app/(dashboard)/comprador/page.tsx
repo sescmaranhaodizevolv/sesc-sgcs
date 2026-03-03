@@ -131,7 +131,7 @@ export default function CompradorDashboardPage() {
     {
       id: "PROC-2024-156",
       titulo: "Aquisição de Material de Escritório",
-      status: "Em Análise",
+      status: "Em Andamento",
       prazo: "15/11/2025",
       fornecedores: 3,
     },
@@ -145,7 +145,7 @@ export default function CompradorDashboardPage() {
     {
       id: "PROC-2024-142",
       titulo: "Equipamentos de Informática",
-      status: "Em Análise",
+      status: "Em Andamento",
       prazo: "20/11/2025",
       fornecedores: 4,
     },
