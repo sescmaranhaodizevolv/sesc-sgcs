@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/features/Sidebar";
 import { Header } from "@/components/features/Header";
+import { ChatbotWidget } from "@/components/ui/chatbot-widget";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function DashboardLayout({
@@ -60,6 +61,8 @@ export default function DashboardLayout({
                     {children}
                 </main>
             </div>
+
+            <ChatbotWidget />
         </div>
     );
 }

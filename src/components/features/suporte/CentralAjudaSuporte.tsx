@@ -14,8 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { 
-  MessageCircle, 
-  Bot,
   GraduationCap, 
   LifeBuoy, 
   Plus, 
@@ -24,16 +22,15 @@ import {
   Clock,
   AlertTriangle,
   Eye,
-  Send,
   Upload,
   Search,
-  User,
   X,
   FileText,
   Download
 } from 'lucide-react';
 import { FileInput } from '@/components/ui/file-input';
 import { getBadgeMappingForPrioridade } from '@/lib/badge-mappings';
+import { faqItemsIniciais } from '@/lib/data/faq-mock';
 import { toast } from "sonner";
 
 interface CentralAjudaSuporteProps {
@@ -41,15 +38,8 @@ interface CentralAjudaSuporteProps {
   currentProfile?: 'admin' | 'comprador' | 'requisitante' | 'gestora';
 }
 
-interface ChatMessage {
-  id: number;
-  type: 'bot' | 'user';
-  message: string;
-  time: string;
-}
-
 export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentProfile = 'admin' }: CentralAjudaSuporteProps) {
-  const [activeTab, setActiveTab] = useState(currentProfile === 'requisitante' ? 'chatbot' : 'chamados');
+  const [activeTab, setActiveTab] = useState(currentProfile === 'requisitante' ? 'faq' : 'chamados');
   const [chamadoAberto, setChamadoAberto] = useState(false);
   const [isUploadDocumentoOpen, setIsUploadDocumentoOpen] = useState(false);
   const [documentoUploadando, setDocumentoUploadando] = useState(false);
@@ -64,15 +54,6 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const [novaPergunta, setNovaPergunta] = useState('');
   const [novaResposta, setNovaResposta] = useState('');
   const [novaCategoria, setNovaCategoria] = useState('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      type: 'bot' as const,
-      message: 'Olá! Sou o assistente virtual do SGCS. Como posso ajudá-lo hoje?',
-      time: '14:30'
-    }
-  ]);
-  const [inputMessage, setInputMessage] = useState('');
 
   // Filtros da tabela
   const [filtroStatus, setFiltroStatus] = useState('todos');
@@ -127,92 +108,6 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     }
   ];
 
-  const faqItemsIniciais = [
-    {
-      id: 1,
-      pergunta: 'Como cadastrar um novo processo licitatório?',
-      resposta: 'Para cadastrar um novo processo, acesse o menu "Processos" > "Gerenciamento de Processos" e clique em "Cadastrar Processo". Preencha todos os campos obrigatórios como modalidade, objeto, valor estimado e anexe os documentos necessários (termo de referência, edital, etc.). O sistema validará automaticamente as informações antes de salvar.',
-      categoria: 'Processos',
-      visualizacoes: 245
-    },
-    {
-      id: 2,
-      pergunta: 'Como aplicar uma penalidade a um fornecedor?',
-      resposta: 'Acesse "Processos" > "Penalidades" e clique em "Aplicar Penalidade". Selecione a empresa fornecedora, o processo relacionado, o tipo de penalidade (advertência, multa, suspensão ou impedimento) e informe a justificativa detalhada com base legal. Anexe os documentos comprobatórios da infração.',
-      categoria: 'Penalidades',
-      visualizacoes: 189
-    },
-    {
-      id: 3,
-      pergunta: 'Como gerar relatórios personalizados?',
-      resposta: 'No menu "Relatórios", utilize os filtros disponíveis para personalizar o relatório conforme suas necessidades. Você pode filtrar por período, modalidade, status, fornecedor e outros critérios. Após aplicar os filtros, clique em "Gerar Relatório" e escolha o formato de exportação (PDF, Excel ou CSV).',
-      categoria: 'Relatórios',
-      visualizacoes: 156
-    },
-    {
-      id: 4,
-      pergunta: 'Como registrar uma desistência de processo?',
-      resposta: 'Acesse "Processos" > "Histórico de Desistências" e clique em "Registrar Desistência". Selecione o processo, informe o motivo da desistência (categoria), descreva a justificativa detalhada e anexe os documentos comprobatórios. O sistema registrará automaticamente a data e o responsável pelo registro.',
-      categoria: 'Processos',
-      visualizacoes: 132
-    },
-    {
-      id: 5,
-      pergunta: 'Como solicitar prorrogação de processo?',
-      resposta: 'No menu "Processos" > "Prorrogações de Processos", clique em "Solicitar Prorrogação". Busque o contrato desejado, informe o novo prazo, o motivo da prorrogação e anexe a justificativa técnica ou jurídica. A solicitação seguirá o fluxo de aprovação conforme as alçadas definidas no sistema.',
-      categoria: 'Contratos',
-      visualizacoes: 178
-    },
-    {
-      id: 6,
-      pergunta: 'Como realizar realinhamento de preços?',
-      resposta: 'Acesse "Processos" > "Realinhamento de Preços" e clique em "Registrar Realinhamento". Selecione o contrato, informe os novos valores, o percentual de variação, o índice utilizado (IPCA, IGPM, etc.) e anexe os documentos comprobatórios como tabelas de preços e memórias de cálculo. O sistema calculará automaticamente o impacto financeiro.',
-      categoria: 'Contratos',
-      visualizacoes: 143
-    },
-    {
-      id: 7,
-      pergunta: 'Como cadastrar um novo fornecedor no sistema?',
-      resposta: 'No menu "Contratos e Fornecedores", clique em "Cadastrar Fornecedor". Preencha os dados da empresa (CNPJ, razão social, endereço, contatos) e anexe os documentos de habilitação (certidões negativas, balanço patrimonial, contrato social). O sistema validará o CNPJ automaticamente na Receita Federal.',
-      categoria: 'Fornecedores',
-      visualizacoes: 201
-    },
-    {
-      id: 8,
-      pergunta: 'Como criar novos usuários e atribuir permissões?',
-      resposta: 'Acesse o menu "Usuários" e clique em "Criar Usuário". Preencha nome completo, e-mail institucional, departamento e selecione o perfil de acesso (Administrador, Responsável ou Visualizador). Cada perfil possui permissões específicas pré-definidas. O usuário receberá um e-mail com instruções para primeiro acesso.',
-      categoria: 'Sistema',
-      visualizacoes: 167
-    },
-    {
-      id: 9,
-      pergunta: 'Qual a diferença entre os perfis de usuário?',
-      resposta: 'O sistema possui 3 perfis: Administrador (acesso total, gerencia usuários e configurações), Responsável (gerencia processos de sua área, solicita prorrogações e registra desistências) e Visualizador (apenas consulta processos e relatórios básicos). As permissões são detalhadas na tela de criação de usuário.',
-      categoria: 'Sistema',
-      visualizacoes: 194
-    },
-    {
-      id: 10,
-      pergunta: 'Como acessar documentos institucionais e manuais?',
-      resposta: 'Na aba "Documentação" desta tela de Ajuda e Suporte, você encontra todos os manuais, regulamentos, procedimentos, templates e legislação aplicável. Clique em "Abrir" ou "Baixar" para visualizar o documento. Os documentos são atualizados periodicamente pela área de Gestão de Contratos.',
-      categoria: 'Documentação',
-      visualizacoes: 221
-    },
-    {
-      id: 11,
-      pergunta: 'Como funciona o envio automático de processos?',
-      resposta: 'Acesse "Integrações" > "Envio Automático" para configurar o envio automático de processos para fornecedores. Configure as regras de envio, limites de valor e destinatários. O sistema enviará automaticamente os processos conforme as condições estabelecidas.',
-      categoria: 'Integrações',
-      visualizacoes: 98
-    },
-    {
-      id: 12,
-      pergunta: 'Como funciona o envio automático de relatórios?',
-      resposta: 'Em "Integrações" > "Envio Automático", configure agendamentos para envio de relatórios por e-mail. Defina o tipo de relatório, destinatários, frequência (diária, semanal ou mensal), horário e formato. Os relatórios serão enviados automaticamente conforme a programação definida.',
-      categoria: 'Integrações',
-      visualizacoes: 112
-    }
-  ];
   const [faqs, setFaqs] = useState(faqItemsIniciais);
 
   const faqItemsRequisitante = [
@@ -444,31 +339,6 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     }, 1500);
   };
 
-  const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
-
-    const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const userMessage: ChatMessage = {
-      id: chatMessages.length + 1,
-      type: 'user',
-      message: inputMessage,
-      time: agora
-    };
-
-    setChatMessages(prev => [...prev, userMessage]);
-    setInputMessage('');
-
-    setTimeout(() => {
-      const botResponse: ChatMessage = {
-        id: chatMessages.length + 2,
-        type: 'bot',
-        message: 'Obrigado pela sua mensagem! Um atendente entrará em contato em breve. Enquanto isso, você pode consultar nosso FAQ para respostas rápidas.',
-        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      };
-      setChatMessages(prev => [...prev, botResponse]);
-    }, 1000);
-  };
-
   const filteredFaqRequisitante = faqItemsRequisitante.filter(item =>
     item.pergunta.toLowerCase().includes(searchFaqRequisitante.toLowerCase()) ||
     item.resposta.toLowerCase().includes(searchFaqRequisitante.toLowerCase())
@@ -617,72 +487,11 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
-            <TabsTrigger value="chatbot">Chatbot</TabsTrigger>
+          <TabsList className="grid w-full max-w-2xl grid-cols-3">
             <TabsTrigger value="chamados">Chamados</TabsTrigger>
             <TabsTrigger value="documentos">Documentos</TabsTrigger>
             <TabsTrigger value="faq">FAQ</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="chatbot" className="space-y-6 mt-6">
-            <Card className="border border-gray-200">
-              <CardHeader className="pt-3 pb-1">
-                <CardTitle className="text-xl text-black px-[0px] py-[8px] flex items-center gap-2">
-                  <Bot size={20} className="text-[#003366]" />
-                  Assistente Virtual
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="h-[400px] rounded-lg border border-gray-200 p-4 mb-4 overflow-y-auto">
-                  <div className="space-y-4">
-                    {chatMessages.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex items-end gap-3 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        {msg.type === 'bot' && (
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-100 text-[#003366] shrink-0">
-                            <Bot size={16} />
-                          </div>
-                        )}
-                        <div
-                          className={`max-w-[70%] rounded-2xl p-3 ${
-                            msg.type === 'user'
-                              ? 'bg-[#003366] text-white rounded-br-none'
-                              : 'bg-gray-100 text-black rounded-bl-none'
-                          }`}
-                        >
-                          <p className="text-sm">{msg.message}</p>
-                          <p className={`text-xs mt-1 ${msg.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
-                            {msg.time}
-                          </p>
-                        </div>
-                        {msg.type === 'user' && (
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 text-gray-600 shrink-0">
-                            <User size={16} />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Digite sua mensagem..."
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSendMessage();
-                    }}
-                  />
-                  <Button onClick={handleSendMessage} className="bg-[#003366] hover:bg-[#002244] text-white">
-                    <Send size={18} />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           <TabsContent value="chamados" className="space-y-6 mt-6">
             <Card className="border border-gray-200">
@@ -1004,74 +813,12 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="chatbot">Chatbot</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="treinamento">Treinamento</TabsTrigger>
           <TabsTrigger value="manuais">Manuais e Documentos</TabsTrigger>
           <TabsTrigger value="chamados">Chamados</TabsTrigger>
           <TabsTrigger value="faq">FAQ</TabsTrigger>
         </TabsList>
-
-        {/* Tab: Chatbot */}
-        <TabsContent value="chatbot" className="space-y-4">
-          <Card className="border border-gray-200">
-            <CardHeader className="bg-gray-50 border-b border-gray-200">
-              <CardTitle className="flex items-center gap-2 font-normal text-[16px] py-[8px]">
-                <MessageCircle size={20} className="text-[#003366]" />
-                Assistente Virtual - Chatbot
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-6">
-              <div className="h-[400px] rounded-lg border border-gray-200 p-4 mb-4 overflow-y-auto">
-                <div className="space-y-4">
-                  {chatMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex items-end gap-3 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      {msg.type === 'bot' && (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-100 text-[#003366] shrink-0">
-                          <Bot size={16} />
-                        </div>
-                      )}
-                      <div
-                        className={`max-w-[70%] rounded-2xl p-3 ${
-                          msg.type === 'user'
-                            ? 'bg-[#003366] text-white rounded-br-none'
-                            : 'bg-gray-100 text-black rounded-bl-none'
-                        }`}
-                      >
-                        <p className="text-sm">{msg.message}</p>
-                        <p className={`text-xs mt-1 ${msg.type === 'user' ? 'text-blue-200' : 'text-gray-500'}`}>
-                          {msg.time}
-                        </p>
-                      </div>
-                      {msg.type === 'user' && (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 text-gray-600 shrink-0">
-                          <User size={16} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Digite sua mensagem..."
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSendMessage();
-                  }}
-                />
-                <Button onClick={handleSendMessage} className="bg-[#003366] hover:bg-[#002244] text-white">
-                  <Send size={18} />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* Tab: Treinamento */}
         <TabsContent value="treinamento" className="space-y-4">
