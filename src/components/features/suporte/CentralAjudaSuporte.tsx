@@ -13,6 +13,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { 
   GraduationCap, 
   LifeBuoy, 
@@ -26,11 +36,13 @@ import {
   Search,
   X,
   FileText,
-  Download
+  Download,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { FileInput } from '@/components/ui/file-input';
 import { getBadgeMappingForPrioridade } from '@/lib/badge-mappings';
-import { faqItemsIniciais } from '@/lib/data/faq-mock';
+import { faqItemsIniciais, type FaqItem } from '@/lib/data/faq-mock';
 import { toast } from "sonner";
 
 interface CentralAjudaSuporteProps {
@@ -54,6 +66,9 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const [novaPergunta, setNovaPergunta] = useState('');
   const [novaResposta, setNovaResposta] = useState('');
   const [novaCategoria, setNovaCategoria] = useState('');
+  const [faqEmEdicao, setFaqEmEdicao] = useState<number | null>(null);
+  const [isDeleteFaqDialogOpen, setIsDeleteFaqDialogOpen] = useState(false);
+  const [faqToDelete, setFaqToDelete] = useState<number | null>(null);
 
   // Filtros da tabela
   const [filtroStatus, setFiltroStatus] = useState('todos');
@@ -64,6 +79,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   // Verificar permissões baseadas no perfil
   const podeAbrirChamado = currentProfile === 'requisitante' || currentProfile === 'comprador';
   const podeResponderChamado = currentProfile === 'admin' || currentProfile === 'comprador';
+  const podeGerenciarFaq: boolean = currentProfile !== 'requisitante';
   const usuarioLogado = currentProfile === 'requisitante' ? 'João Silva' : currentProfile === 'comprador' ? 'Comprador' : currentProfile === 'gestora' ? 'Gestora' : 'Admin';
 
   const chamadosRecentes = [
@@ -382,20 +398,59 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const salvarNovoFaq = () => {
     if (!novaPergunta.trim() || !novaResposta.trim() || !novaCategoria) return;
 
-    const novoFaq = {
-      id: Date.now(),
-      pergunta: novaPergunta.trim(),
-      resposta: novaResposta.trim(),
-      categoria: novaCategoria,
-      visualizacoes: 0
-    };
+    if (faqEmEdicao !== null) {
+      setFaqs((prev) =>
+        prev.map((faq) =>
+          faq.id === faqEmEdicao
+            ? {
+                ...faq,
+                pergunta: novaPergunta.trim(),
+                resposta: novaResposta.trim(),
+                categoria: novaCategoria,
+              }
+            : faq,
+        ),
+      );
+      toast.success("FAQ atualizado com sucesso!");
+    } else {
+      const novoFaq = {
+        id: Date.now(),
+        pergunta: novaPergunta.trim(),
+        resposta: novaResposta.trim(),
+        categoria: novaCategoria,
+        visualizacoes: 0
+      };
 
-    setFaqs(prev => [novoFaq, ...prev]);
-    toast.success("FAQ cadastrado com sucesso!");
+      setFaqs(prev => [novoFaq, ...prev]);
+      toast.success("FAQ cadastrado com sucesso!");
+    }
+
+    setFaqEmEdicao(null);
     setNovaPergunta('');
     setNovaResposta('');
     setNovaCategoria('');
     setIsNovoFaqOpen(false);
+  };
+
+  const abrirModalNovoFaq = () => {
+    setFaqEmEdicao(null);
+    setNovaPergunta('');
+    setNovaResposta('');
+    setNovaCategoria('');
+    setIsNovoFaqOpen(true);
+  };
+
+  const abrirModalEdicao = (faq: FaqItem) => {
+    setFaqEmEdicao(faq.id);
+    setNovaPergunta(faq.pergunta);
+    setNovaResposta(faq.resposta);
+    setNovaCategoria(faq.categoria);
+    setIsNovoFaqOpen(true);
+  };
+
+  const excluirFaq = (id: number) => {
+    setFaqs((prev) => prev.filter((faq) => faq.id !== id));
+    toast.success("FAQ excluído com sucesso!");
   };
 
   if (currentProfile === 'requisitante') {
@@ -649,7 +704,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
               </CardHeader>
               <CardContent className="p-6">
                 {filteredFaqRequisitante.length > 0 ? (
-                  <Accordion type="single" collapsible className="space-y-2">
+                  <Accordion type="single" collapsible className="mt-4 space-y-2">
                     {filteredFaqRequisitante.map((item) => (
                       <AccordionItem
                         key={item.id}
@@ -1444,7 +1499,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                   <HelpCircle size={20} className="text-[#003366]" />
                   Perguntas Frequentes (FAQ)
                 </CardTitle>
-                <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={() => setIsNovoFaqOpen(true)}>
+                <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={abrirModalNovoFaq}>
                   <Plus size={16} className="mr-2" />
                   Cadastrar FAQ
                 </Button>
@@ -1454,7 +1509,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
               <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
                 <div className="flex-1 overflow-y-auto px-6">
                   <DialogHeader className="pt-6">
-                    <DialogTitle>Cadastrar Nova Pergunta (FAQ)</DialogTitle>
+                    <DialogTitle>{faqEmEdicao !== null ? 'Editar Pergunta (FAQ)' : 'Cadastrar Nova Pergunta (FAQ)'}</DialogTitle>
                     <DialogDescription>
                       Adicione uma nova pergunta e resposta para a base de conhecimento.
                     </DialogDescription>
@@ -1503,6 +1558,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                     variant="outline"
                     className="flex-1"
                     onClick={() => {
+                      setFaqEmEdicao(null);
                       setNovaPergunta('');
                       setNovaResposta('');
                       setNovaCategoria('');
@@ -1516,13 +1572,13 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                     onClick={salvarNovoFaq}
                     disabled={!novaPergunta.trim() || !novaResposta.trim() || !novaCategoria}
                   >
-                    Salvar
+                    {faqEmEdicao !== null ? 'Salvar Alterações' : 'Salvar'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <CardContent className="pt-[0px] pr-[24px] pb-[24px] pl-[24px]">
-              <Accordion type="multiple" className="space-y-2">
+            <CardContent className="pt-[16px] pr-[24px] pb-[24px] pl-[24px]">
+              <Accordion type="multiple" className="mt-2 space-y-2">
                 {faqs.map(item => (
                   <AccordionItem key={item.id} value={`item-${item.id}`} className="border border-gray-200 rounded-lg px-4 bg-gray-50">
                     <AccordionTrigger className="hover:no-underline py-4">
@@ -1532,9 +1588,28 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                     </AccordionTrigger>
                     <AccordionContent className="pb-4 pt-2">
                       <p className="text-sm text-gray-600 mb-3">{item.resposta}</p>
-                      <div className="flex items-center gap-2">
-                        <BadgeStatus intent="info" weight="light">{item.categoria}</BadgeStatus>
-                        <span className="text-xs text-gray-500">{item.visualizacoes} visualizações</span>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <BadgeStatus intent="info" weight="light">{item.categoria}</BadgeStatus>
+                          <span className="text-xs text-gray-500">{item.visualizacoes} visualizações</span>
+                        </div>
+                        {podeGerenciarFaq && (
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => abrirModalEdicao(item)}>
+                              <Edit size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setFaqToDelete(item.id);
+                                setIsDeleteFaqDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 size={16} className="text-red-500" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </AccordionContent>
                   </AccordionItem>
@@ -1544,6 +1619,40 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog
+        open={isDeleteFaqDialogOpen}
+        onOpenChange={(open) => {
+          setIsDeleteFaqDialogOpen(open);
+          if (!open) {
+            setFaqToDelete(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir esta pergunta do FAQ? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setFaqToDelete(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (faqToDelete !== null) {
+                  excluirFaq(faqToDelete);
+                }
+                setIsDeleteFaqDialogOpen(false);
+                setFaqToDelete(null);
+              }}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
