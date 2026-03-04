@@ -3,14 +3,17 @@
 import { useMemo, useState } from "react";
 import {
   Edit,
+  FileSignature,
   Plus,
   Search,
   Shield,
+  ShoppingCart,
   Trash2,
   UserCheck,
   Users,
   UserX,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +36,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  DialogClose,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -48,7 +52,11 @@ import { getBadgeMappingForPerfil, getBadgeMappingForStatus } from "@/lib/badge-
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
 
-type PerfilUsuario = "Administrador" | "Responsável" | "Visualizador";
+type PerfilUsuario =
+  | "Administrador"
+  | "Comprador/Responsável"
+  | "Requisitante/Visualizador"
+  | "Gestor de Contratos";
 type StatusUsuario = "Ativo" | "Inativo";
 
 interface Usuario {
@@ -62,7 +70,7 @@ interface Usuario {
   departamento: string;
 }
 
-const usuarios: Usuario[] = [
+const usuariosIniciais: Usuario[] = [
   {
     id: 1,
     nome: "Maria Silva",
@@ -71,13 +79,13 @@ const usuarios: Usuario[] = [
     status: "Ativo",
     ultimoAcesso: "25/01/2024 14:30",
     dataCriacao: "15/01/2024",
-    departamento: "Gestão de Contratos",
+    departamento: "Diretoria",
   },
   {
     id: 2,
     nome: "João Santos",
     email: "joao.santos@sesc.com.br",
-    perfil: "Responsável",
+    perfil: "Comprador/Responsável",
     status: "Ativo",
     ultimoAcesso: "25/01/2024 09:15",
     dataCriacao: "10/01/2024",
@@ -87,31 +95,31 @@ const usuarios: Usuario[] = [
     id: 3,
     nome: "Ana Costa",
     email: "ana.costa@sesc.com.br",
-    perfil: "Visualizador",
+    perfil: "Requisitante/Visualizador",
     status: "Ativo",
     ultimoAcesso: "24/01/2024 16:45",
     dataCriacao: "08/01/2024",
-    departamento: "Auditoria",
+    departamento: "Saúde",
   },
   {
     id: 4,
     nome: "Carlos Oliveira",
     email: "carlos.oliveira@sesc.com.br",
-    perfil: "Responsável",
+    perfil: "Gestor de Contratos",
     status: "Inativo",
     ultimoAcesso: "20/01/2024 11:20",
     dataCriacao: "05/01/2024",
-    departamento: "Tecnologia",
+    departamento: "Gestão de Contratos",
   },
   {
     id: 5,
     nome: "Fernanda Lima",
     email: "fernanda.lima@sesc.com.br",
-    perfil: "Visualizador",
+    perfil: "Requisitante/Visualizador",
     status: "Ativo",
     ultimoAcesso: "25/01/2024 13:10",
     dataCriacao: "12/01/2024",
-    departamento: "Jurídico",
+    departamento: "Eventos",
   },
 ];
 
@@ -124,19 +132,37 @@ const permissoesPorPerfil: Record<PerfilUsuario, string[]> = {
     "Configurar sistema",
     "Excluir registros",
   ],
-  Responsável: [
-    "Gerenciar processos de sua área",
-    "Visualizar relatórios",
-    "Registrar desistências",
-    "Solicitar prorrogações",
-    "Upload de documentos",
+  "Comprador/Responsável": [
+    "Conduzir processos de compras e cotações",
+    "Comparar propostas e registrar decisões",
+    "Atualizar etapas operacionais do processo",
+    "Gerar relatórios operacionais da área",
+    "Interagir com fornecedores e prazos",
   ],
-  Visualizador: [
-    "Visualizar processos",
-    "Consultar relatórios básicos",
-    "Baixar documentos",
+  "Requisitante/Visualizador": [
+    "Criar e acompanhar solicitações de compra",
+    "Consultar andamento dos processos",
+    "Visualizar relatórios básicos e histórico",
+    "Anexar e baixar documentos permitidos",
+  ],
+  "Gestor de Contratos": [
+    "Acompanhar vigência de contratos",
+    "Registrar aditivos e prorrogações",
+    "Controlar marcos e obrigações contratuais",
+    "Emitir alertas de vencimento",
+    "Consultar indicadores de contratos",
   ],
 };
+
+const departamentosDisponiveis = [
+  "Diretoria",
+  "Tecnologia",
+  "Saúde",
+  "Eventos",
+  "Suprimentos",
+  "Gestão de Contratos",
+  "Jurídico",
+] as const;
 
 const normalizar = (valor: string) =>
   valor
@@ -145,23 +171,45 @@ const normalizar = (valor: string) =>
     .toLowerCase();
 
 export default function UsuariosPage() {
+  const [usuariosList, setUsuariosList] = useState<Usuario[]>(usuariosIniciais);
   const [searchTerm, setSearchTerm] = useState("");
   const [perfilFilter, setPerfilFilter] = useState("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
+  const [perfilEdicaoPorUsuario, setPerfilEdicaoPorUsuario] = useState<Record<number, PerfilUsuario>>({});
+  const [departamentoEdicaoPorUsuario, setDepartamentoEdicaoPorUsuario] = useState<Record<number, string>>({});
+  const [statusEdicaoPorUsuario, setStatusEdicaoPorUsuario] = useState<Record<number, StatusUsuario>>({});
+
+  const handleSalvarAlteracoes = (id: number) => {
+    setUsuariosList((prev) =>
+      prev.map((usuario) =>
+        usuario.id === id
+          ? {
+              ...usuario,
+              perfil: perfilEdicaoPorUsuario[id] ?? usuario.perfil,
+              departamento: departamentoEdicaoPorUsuario[id] ?? usuario.departamento,
+              status: statusEdicaoPorUsuario[id] ?? usuario.status,
+            }
+          : usuario,
+      ),
+    );
+
+    toast.success("Usuário atualizado com sucesso!");
+  };
 
   const statusCounts = useMemo(
     () => ({
-      todos: usuarios.length,
-      administrador: usuarios.filter((u) => u.perfil === "Administrador").length,
-      responsavel: usuarios.filter((u) => u.perfil === "Responsável").length,
-      visualizador: usuarios.filter((u) => u.perfil === "Visualizador").length,
-      ativos: usuarios.filter((u) => u.status === "Ativo").length,
-      inativos: usuarios.filter((u) => u.status === "Inativo").length,
+      todos: usuariosList.length,
+      administrador: usuariosList.filter((u) => u.perfil === "Administrador").length,
+      compradorResponsavel: usuariosList.filter((u) => u.perfil === "Comprador/Responsável").length,
+      requisitanteVisualizador: usuariosList.filter((u) => u.perfil === "Requisitante/Visualizador").length,
+      gestorContratos: usuariosList.filter((u) => u.perfil === "Gestor de Contratos").length,
+      ativos: usuariosList.filter((u) => u.status === "Ativo").length,
+      inativos: usuariosList.filter((u) => u.status === "Inativo").length,
     }),
-    [],
+    [usuariosList],
   );
 
-  const filteredUsuarios = usuarios.filter((usuario) => {
+  const filteredUsuarios = usuariosList.filter((usuario) => {
     const matchesSearch =
       usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
       usuario.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -212,8 +260,9 @@ export default function UsuariosPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="administrador">Administrador</SelectItem>
-                      <SelectItem value="responsavel">Responsável</SelectItem>
-                      <SelectItem value="visualizador">Visualizador</SelectItem>
+                      <SelectItem value="comprador/responsavel">Comprador/Responsável</SelectItem>
+                      <SelectItem value="requisitante/visualizador">Requisitante/Visualizador</SelectItem>
+                      <SelectItem value="gestor de contratos">Gestor de Contratos</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -224,10 +273,12 @@ export default function UsuariosPage() {
                       <SelectValue placeholder="Selecione o departamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="gestao-contratos">Gestão de Contratos</SelectItem>
-                      <SelectItem value="suprimentos">Suprimentos</SelectItem>
-                      <SelectItem value="auditoria">Auditoria</SelectItem>
+                      <SelectItem value="diretoria">Diretoria</SelectItem>
                       <SelectItem value="tecnologia">Tecnologia</SelectItem>
+                      <SelectItem value="saude">Saúde</SelectItem>
+                      <SelectItem value="eventos">Eventos</SelectItem>
+                      <SelectItem value="suprimentos">Suprimentos</SelectItem>
+                      <SelectItem value="gestao-contratos">Gestão de Contratos</SelectItem>
                       <SelectItem value="juridico">Jurídico</SelectItem>
                     </SelectContent>
                   </Select>
@@ -235,9 +286,11 @@ export default function UsuariosPage() {
               </div>
             </div>
             <DialogFooter className="flex gap-2 rounded-b-[8px] border-t bg-white px-6 pb-4 pt-4">
-              <Button className="flex-1" variant="outline">
-                Cancelar
-              </Button>
+              <DialogClose asChild>
+                <Button className="flex-1" variant="outline">
+                  Cancelar
+                </Button>
+              </DialogClose>
               <Button className="flex-1 bg-[#003366] text-white hover:bg-[#002244]">
                 Criar Usuário
               </Button>
@@ -246,16 +299,16 @@ export default function UsuariosPage() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         <Card className="border border-gray-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-100 p-2">
+              <div className="shrink-0 rounded-lg bg-blue-100 p-2">
                 <Users className="text-blue-600" size={20} />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-2xl text-black">{statusCounts.todos}</p>
-                <p className="text-sm text-gray-600">Total</p>
+                <p className="truncate text-sm text-gray-600" title="Total">Total</p>
               </div>
             </div>
           </CardContent>
@@ -263,12 +316,12 @@ export default function UsuariosPage() {
         <Card className="border border-gray-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-red-100 p-2">
+              <div className="shrink-0 rounded-lg bg-red-100 p-2">
                 <Shield className="text-red-600" size={20} />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-2xl text-red-600">{statusCounts.administrador}</p>
-                <p className="text-sm text-gray-600">Administradores</p>
+                <p className="truncate text-sm text-gray-600" title="Administradores">Administradores</p>
               </div>
             </div>
           </CardContent>
@@ -276,12 +329,12 @@ export default function UsuariosPage() {
         <Card className="border border-gray-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-100 p-2">
-                <UserCheck className="text-blue-600" size={20} />
+              <div className="shrink-0 rounded-lg bg-blue-100 p-2">
+                <ShoppingCart className="text-blue-600" size={20} />
               </div>
-              <div>
-                <p className="text-2xl text-blue-600">{statusCounts.responsavel}</p>
-                <p className="text-sm text-gray-600">Responsáveis</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-2xl text-blue-600">{statusCounts.compradorResponsavel}</p>
+                <p className="truncate text-sm text-gray-600" title="Comprador/Responsável">Comprador/Responsável</p>
               </div>
             </div>
           </CardContent>
@@ -289,12 +342,12 @@ export default function UsuariosPage() {
         <Card className="border border-gray-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-gray-100 p-2">
+              <div className="shrink-0 rounded-lg bg-gray-100 p-2">
                 <Users className="text-gray-600" size={20} />
               </div>
-              <div>
-                <p className="text-2xl text-gray-600">{statusCounts.visualizador}</p>
-                <p className="text-sm text-gray-600">Visualizadores</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-2xl text-gray-600">{statusCounts.requisitanteVisualizador}</p>
+                <p className="truncate text-sm text-gray-600" title="Requisitante/Visualizador">Requisitante/Visualizador</p>
               </div>
             </div>
           </CardContent>
@@ -302,12 +355,25 @@ export default function UsuariosPage() {
         <Card className="border border-gray-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-green-100 p-2">
+              <div className="shrink-0 rounded-lg bg-purple-100 p-2">
+                <FileSignature className="text-purple-600" size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-2xl text-purple-600">{statusCounts.gestorContratos}</p>
+                <p className="truncate text-sm text-gray-600" title="Gestor de Contratos">Gestor de Contratos</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border border-gray-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="shrink-0 rounded-lg bg-green-100 p-2">
                 <UserCheck className="text-green-600" size={20} />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-2xl text-green-600">{statusCounts.ativos}</p>
-                <p className="text-sm text-gray-600">Ativos</p>
+                <p className="truncate text-sm text-gray-600" title="Ativos">Ativos</p>
               </div>
             </div>
           </CardContent>
@@ -315,12 +381,12 @@ export default function UsuariosPage() {
         <Card className="border border-gray-200">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-red-100 p-2">
+              <div className="shrink-0 rounded-lg bg-red-100 p-2">
                 <UserX className="text-red-600" size={20} />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-2xl text-red-600">{statusCounts.inativos}</p>
-                <p className="text-sm text-gray-600">Inativos</p>
+                <p className="truncate text-sm text-gray-600" title="Inativos">Inativos</p>
               </div>
             </div>
           </CardContent>
@@ -349,8 +415,9 @@ export default function UsuariosPage() {
                 <SelectContent>
                   <SelectItem value="todos">Todos os Perfis</SelectItem>
                   <SelectItem value="administrador">Administrador</SelectItem>
-                  <SelectItem value="responsável">Responsável</SelectItem>
-                  <SelectItem value="visualizador">Visualizador</SelectItem>
+                  <SelectItem value="comprador/responsavel">Comprador/Responsável</SelectItem>
+                  <SelectItem value="requisitante/visualizador">Requisitante/Visualizador</SelectItem>
+                  <SelectItem value="gestor de contratos">Gestor de Contratos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -419,7 +486,12 @@ export default function UsuariosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedUsuarios.map((usuario) => (
+                {sortedUsuarios.map((usuario) => {
+                  const perfilSelecionado = perfilEdicaoPorUsuario[usuario.id] ?? usuario.perfil;
+                  const departamentoSelecionado = departamentoEdicaoPorUsuario[usuario.id] ?? usuario.departamento;
+                  const statusSelecionado = statusEdicaoPorUsuario[usuario.id] ?? usuario.status;
+
+                  return (
                   <TableRow key={usuario.id}>
                     <TableCell className="sticky left-0 z-10 text-black bg-white">{usuario.nome}</TableCell>
                     <TableCell className="text-gray-600">{usuario.email}</TableCell>
@@ -446,29 +518,72 @@ export default function UsuariosPage() {
                           <DialogContent className="max-h-[85vh] max-w-lg p-0">
                             <div className="flex-1 overflow-y-auto px-6">
                               <DialogHeader className="pt-6">
-                                <DialogTitle>Editar Permissões - {usuario.nome}</DialogTitle>
+                                <DialogTitle>Editar Usuário - {usuario.nome}</DialogTitle>
                                 <DialogDescription>
                                   Edite o perfil e permissões do usuário selecionado.
                                 </DialogDescription>
                               </DialogHeader>
                               <div className="grid gap-4 py-4 pb-6">
                                 <div className="space-y-1.5">
-                                  <Label>Perfil Atual: {usuario.perfil}</Label>
-                                  <Select defaultValue={normalizar(usuario.perfil)}>
+                                  <Label>Perfil de Acesso</Label>
+                                  <Select
+                                    value={perfilSelecionado}
+                                    onValueChange={(value) =>
+                                      setPerfilEdicaoPorUsuario((prev) => ({ ...prev, [usuario.id]: value as PerfilUsuario }))
+                                    }
+                                  >
                                     <SelectTrigger>
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="administrador">Administrador</SelectItem>
-                                      <SelectItem value="responsavel">Responsável</SelectItem>
-                                      <SelectItem value="visualizador">Visualizador</SelectItem>
+                                      <SelectItem value="Administrador">Administrador</SelectItem>
+                                      <SelectItem value="Comprador/Responsável">Comprador/Responsável</SelectItem>
+                                      <SelectItem value="Requisitante/Visualizador">Requisitante/Visualizador</SelectItem>
+                                      <SelectItem value="Gestor de Contratos">Gestor de Contratos</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 <div className="space-y-1.5">
-                                  <Label>Permissões do Perfil {usuario.perfil}:</Label>
+                                  <Label>Departamento</Label>
+                                  <Select
+                                    value={departamentoSelecionado}
+                                    onValueChange={(value) =>
+                                      setDepartamentoEdicaoPorUsuario((prev) => ({ ...prev, [usuario.id]: value }))
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {departamentosDisponiveis.map((departamento) => (
+                                        <SelectItem key={departamento} value={departamento}>
+                                          {departamento}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Status</Label>
+                                  <Select
+                                    value={statusSelecionado}
+                                    onValueChange={(value) =>
+                                      setStatusEdicaoPorUsuario((prev) => ({ ...prev, [usuario.id]: value as StatusUsuario }))
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Ativo">Ativo</SelectItem>
+                                      <SelectItem value="Inativo">Inativo</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Permissões do Perfil {perfilSelecionado}:</Label>
                                   <div className="mt-2 space-y-2">
-                                    {permissoesPorPerfil[usuario.perfil].map((permissao) => (
+                                    {permissoesPorPerfil[perfilSelecionado].map((permissao) => (
                                       <div key={permissao} className="flex items-center gap-2 text-sm text-gray-600">
                                         <div className="h-2 w-2 rounded-full bg-blue-500" />
                                         {permissao}
@@ -479,12 +594,19 @@ export default function UsuariosPage() {
                               </div>
                             </div>
                             <DialogFooter className="flex gap-2 rounded-b-[8px] border-t bg-white px-6 pb-4 pt-4">
-                              <Button className="flex-1" variant="outline">
-                                Cancelar
-                              </Button>
-                              <Button className="flex-1 bg-[#003366] text-white hover:bg-[#002244]">
-                                Salvar Alterações
-                              </Button>
+                              <DialogClose asChild>
+                                <Button className="flex-1" variant="outline">
+                                  Cancelar
+                                </Button>
+                              </DialogClose>
+                              <DialogClose asChild>
+                                <Button
+                                  className="flex-1 bg-[#003366] text-white hover:bg-[#002244]"
+                                  onClick={() => handleSalvarAlteracoes(usuario.id)}
+                                >
+                                  Salvar Alterações
+                                </Button>
+                              </DialogClose>
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
@@ -518,7 +640,8 @@ export default function UsuariosPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

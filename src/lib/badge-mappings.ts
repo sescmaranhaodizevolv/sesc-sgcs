@@ -78,6 +78,9 @@ export const prioridadeMapping: Record<string, BadgeMapping> = {
 /** Mapeamento de perfis de usuários */
 export const perfilMapping: Record<string, BadgeMapping> = {
   Administrador: { intent: "purple", weight: "medium" },
+  "Comprador/Responsável": { intent: "info", weight: "medium" },
+  "Requisitante/Visualizador": { intent: "neutral", weight: "light" },
+  "Gestor de Contratos": { intent: "orange", weight: "medium" },
   Comprador: { intent: "info", weight: "medium" },
   Responsável: { intent: "info", weight: "light" },
   Requisitante: { intent: "neutral", weight: "light" },

@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, MessageCircle, X } from "lucide-react";
+import { Bot, MessageCircle, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { faqItemsIniciais, type FaqItem } from "@/lib/data/faq-mock";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 type ChatStep = "categorias" | "perguntas" | "resposta";
 
@@ -42,6 +41,10 @@ export function ChatbotWidget() {
     () => faqItemsIniciais.filter((item) => item.categoria === selectedCategory),
     [selectedCategory]
   );
+
+  if (currentProfile !== "requisitante") {
+    return null;
+  }
 
   const appendHistory = (type: HistoryMessage["type"], message: string) => {
     setChatHistory((prev) => [
@@ -99,8 +102,13 @@ export function ChatbotWidget() {
           </Button>
         </PopoverTrigger>
 
-        <PopoverContent side="top" align="end" sideOffset={12} className="w-[360px] p-0">
-          <Card className="border-0 shadow-none">
+        <PopoverContent
+          side="top"
+          align="end"
+          sideOffset={12}
+          className="flex max-h-[85vh] w-[360px] flex-col p-0"
+        >
+          <Card className="flex flex-1 flex-col overflow-hidden border-0 shadow-none">
             <CardHeader className="border-b bg-gray-50 py-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-base font-normal">
@@ -119,29 +127,39 @@ export function ChatbotWidget() {
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-3 p-4">
-              <ScrollArea className="h-[280px] pr-2">
-                <div className="space-y-3">
-                  {chatHistory.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`flex ${item.type === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
-                          item.type === "user"
-                            ? "rounded-br-none bg-[#003366] text-white"
-                            : "rounded-bl-none bg-gray-100 text-black"
-                        }`}
-                      >
-                        {item.message}
+            <CardContent className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden">
+              <div className="flex-1 overflow-y-auto min-h-0 pr-2 space-y-4">
+                {chatHistory.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`flex items-end gap-2 ${item.type === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    {item.type === "bot" && (
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-blue-100 text-[#003366] flex items-center justify-center">
+                        <Bot size={16} />
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
+                    )}
 
-              <div className="space-y-2 border-t pt-3">
+                    <div
+                      className={`max-w-[85%] break-words rounded-2xl px-3 py-2 text-sm ${
+                        item.type === "user"
+                          ? "rounded-br-none bg-[#003366] text-white"
+                          : "rounded-bl-none bg-gray-100 text-black"
+                      }`}
+                    >
+                      {item.message}
+                    </div>
+
+                    {item.type === "user" && (
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center">
+                        <User size={16} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="shrink-0 mt-3 pt-3 border-t bg-white">
                 {step === "categorias" && (
                   <div className="grid grid-cols-1 gap-2">
                     {categorias.map((categoria) => (
