@@ -21,7 +21,7 @@ interface UseIdleLogoutOptions {
     /** Timeout em ms (padrão: 15 min) */
     timeoutMs?: number;
     /** Callback executado ao atingir inatividade */
-    onIdle: () => void;
+    onIdle: () => void | Promise<void>;
     /** Se o hook está habilitado (ex: só quando autenticado) */
     enabled?: boolean;
 }
@@ -40,7 +40,7 @@ export function useIdleLogout({
             clearTimeout(timerRef.current);
         }
         timerRef.current = setTimeout(() => {
-            onIdleRef.current();
+            void onIdleRef.current();
         }, timeoutMs);
     }, [timeoutMs]);
 

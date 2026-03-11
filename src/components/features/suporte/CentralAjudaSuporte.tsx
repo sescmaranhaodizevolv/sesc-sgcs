@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,8 +42,10 @@ import {
 } from 'lucide-react';
 import { FileInput } from '@/components/ui/file-input';
 import { getBadgeMappingForPrioridade } from '@/lib/badge-mappings';
-import { faqItemsIniciais, type FaqItem } from '@/lib/data/faq-mock';
+import { createFaq, deleteFaq, getFaqs, updateFaq, type FaqItem } from '@/services/faqService';
 import { toast } from "sonner";
+import { getDocumentos } from "@/services/documentosService";
+import type { DocumentoItem } from "@/services/documentosService";
 
 interface CentralAjudaSuporteProps {
   onNavigateToChamado?: (chamadoId: number) => void;
@@ -62,13 +64,15 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const [searchFaqRequisitante, setSearchFaqRequisitante] = useState('');
   const [searchChamadosRequisitante, setSearchChamadosRequisitante] = useState('');
   const [searchDocumentosRequisitante, setSearchDocumentosRequisitante] = useState('');
+  const [documentos, setDocumentos] = useState<DocumentoItem[]>([]);
+  const [isLoadingDocumentos, setIsLoadingDocumentos] = useState(false);
   const [isNovoFaqOpen, setIsNovoFaqOpen] = useState(false);
   const [novaPergunta, setNovaPergunta] = useState('');
   const [novaResposta, setNovaResposta] = useState('');
   const [novaCategoria, setNovaCategoria] = useState('');
-  const [faqEmEdicao, setFaqEmEdicao] = useState<number | null>(null);
+  const [faqEmEdicao, setFaqEmEdicao] = useState<string | null>(null);
   const [isDeleteFaqDialogOpen, setIsDeleteFaqDialogOpen] = useState(false);
-  const [faqToDelete, setFaqToDelete] = useState<number | null>(null);
+  const [faqToDelete, setFaqToDelete] = useState<string | null>(null);
 
   // Filtros da tabela
   const [filtroStatus, setFiltroStatus] = useState('todos');
@@ -79,7 +83,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   // Verificar permissões baseadas no perfil
   const podeAbrirChamado = currentProfile === 'requisitante' || currentProfile === 'comprador';
   const podeResponderChamado = currentProfile === 'admin' || currentProfile === 'comprador';
-  const podeGerenciarFaq: boolean = currentProfile !== 'requisitante';
+  const podeGerenciarFaq: boolean = currentProfile === 'admin';
   const usuarioLogado = currentProfile === 'requisitante' ? 'João Silva' : currentProfile === 'comprador' ? 'Comprador' : currentProfile === 'gestora' ? 'Gestora' : 'Admin';
 
   const chamadosRecentes = [
@@ -124,50 +128,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     }
   ];
 
-  const [faqs, setFaqs] = useState(faqItemsIniciais);
-
-  const faqItemsRequisitante = [
-    {
-      id: 'faq-1',
-      pergunta: 'Como acompanhar o status da minha requisição de compra?',
-      resposta: 'Para acompanhar o status da sua RC, acesse o menu "Minhas Requisições" no sistema. Lá você encontrará todas as suas solicitações com o status atualizado em tempo real. Clique em "Detalhar" para ver o histórico completo de andamento.'
-    },
-    {
-      id: 'faq-2',
-      pergunta: 'O que significa quando minha RC está com status "Devolvido"?',
-      resposta: 'Status "Devolvido" significa que o setor de compras identificou alguma pendência ou necessidade de complementação de informações na sua requisição. Acesse o detalhe da RC para ver a mensagem do setor de compras e faça os ajustes necessários.'
-    },
-    {
-      id: 'faq-3',
-      pergunta: 'Quanto tempo leva para processar uma requisição de compra?',
-      resposta: 'O prazo varia conforme o tipo de processo: Dispensa (até 15 dias), Inexigibilidade (até 10 dias), Licitação (30 a 60 dias) e Pregão Eletrônico (20 a 45 dias). Estes prazos podem variar dependendo da complexidade e da disponibilidade de fornecedores.'
-    },
-    {
-      id: 'faq-4',
-      pergunta: 'Posso cancelar uma requisição que já foi enviada?',
-      resposta: 'Sim, mas apenas enquanto a RC estiver em status "Em Análise". Após iniciar a cotação com fornecedores, o cancelamento deve ser solicitado formalmente entrando em contato com o setor de compras.'
-    },
-    {
-      id: 'faq-5',
-      pergunta: 'Como faço para alterar informações de uma RC já enviada?',
-      resposta: 'Se a RC ainda estiver em análise, você pode fazer alterações diretamente no sistema. Caso já tenha sido iniciado o processo de cotação, é necessário aguardar a devolução da RC pelo setor de compras ou solicitar a alteração através da Central de Suporte.'
-    },
-    {
-      id: 'faq-6',
-      pergunta: 'O que fazer se minha RC estiver parada há muito tempo?',
-      resposta: 'Verifique primeiro o histórico de andamento no detalhe da RC. Se houver algum bloqueio identificado, entre em contato com o responsável atual listado no sistema. Caso não consiga resolver, abra um chamado na Central de Suporte.'
-    },
-    {
-      id: 'faq-7',
-      pergunta: 'Onde encontro os manuais e procedimentos de compras?',
-      resposta: 'Todos os documentos institucionais, manuais e procedimentos estão disponíveis na aba "Documentos" desta Central de Suporte. Você pode fazer o download dos arquivos em PDF.'
-    },
-    {
-      id: 'faq-8',
-      pergunta: 'Preciso anexar documentos à minha requisição?',
-      resposta: 'Dependendo do tipo de aquisição, sim. Documentos como especificações técnicas, orçamentos prévios ou justificativas devem ser anexados no momento da criação da RC. Consulte o Manual de Requisições para mais detalhes.'
-    }
-  ];
+  const [faqs, setFaqs] = useState<(FaqItem & { visualizacoes: number })[]>([]);
 
   const meusChamados = [
     {
@@ -208,80 +169,38 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     }
   ];
 
-  const documentosRequisitante = [
-    {
-      id: 1,
-      titulo: 'Manual de Requisições de Compra',
-      tipo: 'Manual',
-      categoria: 'Guia do Usuário',
-      dataPublicacao: '15/10/2025',
-      tamanho: '2.5 MB',
-      versao: 'v3.2'
-    },
-    {
-      id: 2,
-      titulo: 'Fluxograma do Processo de Compras',
-      tipo: 'Procedimento',
-      categoria: 'Processo',
-      dataPublicacao: '20/09/2025',
-      tamanho: '1.2 MB',
-      versao: 'v2.0'
-    },
-    {
-      id: 3,
-      titulo: 'Política de Aquisições do SESC',
-      tipo: 'Normativa',
-      categoria: 'Política',
-      dataPublicacao: '01/09/2025',
-      tamanho: '3.8 MB',
-      versao: 'v5.1'
-    },
-    {
-      id: 4,
-      titulo: 'FAQ - Perguntas Frequentes sobre RCs',
-      tipo: 'Guia',
-      categoria: 'Guia do Usuário',
-      dataPublicacao: '10/10/2025',
-      tamanho: '850 KB',
-      versao: 'v1.8'
-    },
-    {
-      id: 5,
-      titulo: 'Tutorial: Como Criar uma Requisição de Compra',
-      tipo: 'Tutorial',
-      categoria: 'Treinamento',
-      dataPublicacao: '05/11/2025',
-      tamanho: '4.1 MB',
-      versao: 'v2.3'
-    },
-    {
-      id: 6,
-      titulo: 'Modelo de Especificação Técnica',
-      tipo: 'Modelo',
-      categoria: 'Template',
-      dataPublicacao: '22/08/2025',
-      tamanho: '650 KB',
-      versao: 'v1.5'
-    },
-    {
-      id: 7,
-      titulo: 'Guia de Classificação de Pedidos',
-      tipo: 'Guia',
-      categoria: 'Procedimento',
-      dataPublicacao: '12/09/2025',
-      tamanho: '1.7 MB',
-      versao: 'v2.1'
-    },
-    {
-      id: 8,
-      titulo: 'Procedimento de Cancelamento de RC',
-      tipo: 'Procedimento',
-      categoria: 'Processo',
-      dataPublicacao: '30/09/2025',
-      tamanho: '980 KB',
-      versao: 'v1.3'
-    }
-  ];
+  useEffect(() => {
+    const loadDocumentos = async () => {
+      setIsLoadingDocumentos(true);
+      try {
+        const data = await getDocumentos();
+        setDocumentos(data);
+      } catch (error) {
+        toast.error('Erro ao carregar documentos', {
+          description: error instanceof Error ? error.message : 'Não foi possível carregar os documentos institucionais.',
+        });
+      } finally {
+        setIsLoadingDocumentos(false);
+      }
+    };
+
+    void loadDocumentos();
+  }, []);
+
+  useEffect(() => {
+    const loadFaqs = async () => {
+      try {
+        const data = await getFaqs();
+        setFaqs(data.map((item) => ({ ...item, visualizacoes: 0 })));
+      } catch (error) {
+        toast.error('Erro ao carregar FAQ', {
+          description: error instanceof Error ? error.message : 'Não foi possível carregar a base de conhecimento.',
+        });
+      }
+    };
+
+    void loadFaqs();
+  }, []);
 
   const estatisticasSuporte = {
     chamadosAbertos: chamadosRecentes.filter(c => c.status !== 'Resolvido').length,
@@ -355,7 +274,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     }, 1500);
   };
 
-  const filteredFaqRequisitante = faqItemsRequisitante.filter(item =>
+  const filteredFaqRequisitante = faqs.filter((item) =>
     item.pergunta.toLowerCase().includes(searchFaqRequisitante.toLowerCase()) ||
     item.resposta.toLowerCase().includes(searchFaqRequisitante.toLowerCase())
   );
@@ -365,7 +284,38 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     chamado.id.toLowerCase().includes(searchChamadosRequisitante.toLowerCase())
   );
 
-  const filteredDocumentosRequisitante = documentosRequisitante.filter(doc =>
+  const formatDocumentSize = (size?: number | null) => {
+    if (!size || Number.isNaN(size)) return '0 KB';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDocumentDate = (value?: string | null) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('pt-BR');
+  };
+
+  const documentosInstitucionais = documentos
+    .filter((doc) =>
+      currentProfile === 'requisitante'
+        ? doc.acesso_publico
+        : doc.categoria === 'Institucional' || doc.acesso_publico
+    )
+    .map((doc) => ({
+      id: doc.id,
+      titulo: doc.titulo || doc.nome_arquivo,
+      tipo: doc.tipo || 'Documento',
+      categoria: doc.categoria || 'Geral',
+      dataPublicacao: formatDocumentDate(doc.criado_em),
+      tamanho: formatDocumentSize(doc.tamanho_bytes),
+      versao: doc.periodo || '-',
+      urlAssinada: doc.url_assinada,
+    }));
+
+  const filteredDocumentosRequisitante = documentosInstitucionais.filter((doc) =>
     doc.titulo.toLowerCase().includes(searchDocumentosRequisitante.toLowerCase()) ||
     doc.tipo.toLowerCase().includes(searchDocumentosRequisitante.toLowerCase()) ||
     doc.categoria.toLowerCase().includes(searchDocumentosRequisitante.toLowerCase())
@@ -395,34 +345,36 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     return tipoMap[tipo] || 'bg-gray-100 text-gray-800';
   };
 
-  const salvarNovoFaq = () => {
+  const salvarNovoFaq = async () => {
     if (!novaPergunta.trim() || !novaResposta.trim() || !novaCategoria) return;
 
-    if (faqEmEdicao !== null) {
-      setFaqs((prev) =>
-        prev.map((faq) =>
-          faq.id === faqEmEdicao
-            ? {
-                ...faq,
-                pergunta: novaPergunta.trim(),
-                resposta: novaResposta.trim(),
-                categoria: novaCategoria,
-              }
-            : faq,
-        ),
-      );
-      toast.success("FAQ atualizado com sucesso!");
-    } else {
-      const novoFaq = {
-        id: Date.now(),
-        pergunta: novaPergunta.trim(),
-        resposta: novaResposta.trim(),
-        categoria: novaCategoria,
-        visualizacoes: 0
-      };
+    try {
+      if (faqEmEdicao !== null) {
+        const faqAtualizado = await updateFaq(faqEmEdicao, {
+          pergunta: novaPergunta.trim(),
+          resposta: novaResposta.trim(),
+          categoria: novaCategoria,
+          palavras_chave: [novaCategoria.toLowerCase(), ...novaPergunta.trim().toLowerCase().split(/\s+/)].slice(0, 8),
+        });
 
-      setFaqs(prev => [novoFaq, ...prev]);
-      toast.success("FAQ cadastrado com sucesso!");
+        setFaqs((prev) => prev.map((faq) => (faq.id === faqEmEdicao ? { ...faqAtualizado, visualizacoes: faq.visualizacoes } : faq)));
+        toast.success("FAQ atualizado com sucesso!");
+      } else {
+        const novoFaq = await createFaq({
+          pergunta: novaPergunta.trim(),
+          resposta: novaResposta.trim(),
+          categoria: novaCategoria,
+          palavras_chave: [novaCategoria.toLowerCase(), ...novaPergunta.trim().toLowerCase().split(/\s+/)].slice(0, 8),
+        });
+
+        setFaqs((prev) => [{ ...novoFaq, visualizacoes: 0 }, ...prev]);
+        toast.success("FAQ cadastrado com sucesso!");
+      }
+    } catch (error) {
+      toast.error("Erro ao salvar FAQ", {
+        description: error instanceof Error ? error.message : "Não foi possível salvar a pergunta frequente.",
+      });
+      return;
     }
 
     setFaqEmEdicao(null);
@@ -448,9 +400,16 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     setIsNovoFaqOpen(true);
   };
 
-  const excluirFaq = (id: number) => {
-    setFaqs((prev) => prev.filter((faq) => faq.id !== id));
-    toast.success("FAQ excluído com sucesso!");
+  const excluirFaq = async (id: string) => {
+    try {
+      await deleteFaq(id);
+      setFaqs((prev) => prev.filter((faq) => faq.id !== id));
+      toast.success("FAQ excluído com sucesso!");
+    } catch (error) {
+      toast.error("Erro ao excluir FAQ", {
+        description: error instanceof Error ? error.message : "Não foi possível excluir a pergunta frequente.",
+      });
+    }
   };
 
   if (currentProfile === 'requisitante') {
@@ -624,14 +583,14 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
               <CardHeader className="bg-gray-50 border-b border-gray-200">
                 <CardTitle className="flex items-center gap-2 font-normal text-[16px] py-[8px]">
                   <HelpCircle size={20} className="text-[#003366]" />
-                  Manuais e Documentos Institucionais para Requisitantes
+                  Downloads Institucionais
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-[0px] pr-[24px] pb-[24px] pl-[24px]">
                 <Alert className="mt-6 mb-4 border-blue-200 bg-blue-50">
                   <HelpCircle className="h-4 w-4 text-blue-600" />
                   <AlertDescription className="text-blue-800">
-                    Consulte os manuais, guias e documentos institucionais para auxiliar no processo de requisições de compra.
+                    Consulte os documentos institucionais publicados e os materiais públicos disponíveis para apoio às rotinas do sistema.
                   </AlertDescription>
                 </Alert>
 
@@ -646,7 +605,11 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                 </div>
 
                 <div className="space-y-3">
-                  {filteredDocumentosRequisitante.map((doc) => (
+                  {isLoadingDocumentos ? (
+                    <div className="p-8 text-center">
+                      <p className="text-gray-600">Carregando documentos...</p>
+                    </div>
+                  ) : filteredDocumentosRequisitante.map((doc) => (
                     <Card key={doc.id} className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-3">
@@ -667,7 +630,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                               </div>
                             </div>
                           </div>
-                          <Button size="sm" variant="outline">
+                          <Button size="sm" variant="outline" onClick={() => window.open(doc.urlAssinada, '_blank', 'noopener,noreferrer')}>
                             <Download size={16} className="mr-2" />
                             Baixar
                           </Button>
@@ -1069,7 +1032,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 font-normal text-[16px] py-[8px]">
                   <HelpCircle size={20} className="text-[#003366]" />
-                  Manuais e Documentos Institucionais do Setor de Compras
+                  Downloads Institucionais
                 </CardTitle>
                 {currentProfile === 'admin' && (
                   <Dialog open={isUploadDocumentoOpen} onOpenChange={setIsUploadDocumentoOpen}>
@@ -1192,161 +1155,43 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
               </Alert>
 
               <div className="space-y-3">
-                <Card className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="bg-red-100 p-3 rounded-lg">
-                          <HelpCircle size={24} className="text-red-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-black">Manual de Compras e Licitações SESC</h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Regulamento completo para processos de compra e licitações
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <BadgeStatus intent="danger" weight="medium">PDF • 5.2 MB</BadgeStatus>
-                            <span className="text-xs text-gray-500">Atualizado em 10/01/2024</span>
+                {isLoadingDocumentos ? (
+                  <div className="p-8 text-center text-gray-600">Carregando downloads institucionais...</div>
+                ) : filteredDocumentosRequisitante.length > 0 ? (
+                  filteredDocumentosRequisitante.map((doc) => (
+                    <Card key={doc.id} className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 flex-1">
+                            <div className="bg-blue-100 p-3 rounded-lg">
+                              <HelpCircle size={24} className="text-blue-600" />
+                            </div>
+                            <div>
+                              <h3 className="text-black">{doc.titulo}</h3>
+                              <p className="text-sm text-gray-600 mt-1">{doc.categoria}</p>
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getTipoBadgeClass(doc.tipo)}`}>
+                                  {doc.tipo}
+                                </span>
+                                <span className="text-xs text-gray-500">{doc.tamanho}</span>
+                                <span className="text-xs text-gray-500">{doc.versao}</span>
+                                <span className="text-xs text-gray-500">Publicado em {doc.dataPublicacao}</span>
+                              </div>
+                            </div>
                           </div>
+                          <Button size="sm" variant="outline" onClick={() => window.open(doc.urlAssinada, '_blank', 'noopener,noreferrer')}>
+                            <Download size={16} className="mr-2" />
+                            Baixar
+                          </Button>
                         </div>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Eye size={16} className="mr-2" />
-                        Abrir
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="bg-blue-100 p-3 rounded-lg">
-                          <HelpCircle size={24} className="text-blue-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-black">Procedimentos para Requisitantes</h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Guia prático para abertura e acompanhamento de solicitações de compra
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <BadgeStatus intent="info" weight="medium">PDF • 1.8 MB</BadgeStatus>
-                            <span className="text-xs text-gray-500">Atualizado em 15/01/2024</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Eye size={16} className="mr-2" />
-                        Abrir
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="bg-green-100 p-3 rounded-lg">
-                          <HelpCircle size={24} className="text-green-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-black">Tabela de Alçadas e Limites</h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Valores de alçada para aprovação de processos por modalidade
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <BadgeStatus intent="success" weight="medium">PDF • 0.5 MB</BadgeStatus>
-                            <span className="text-xs text-gray-500">Atualizado em 05/01/2024</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Eye size={16} className="mr-2" />
-                        Abrir
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="bg-purple-100 p-3 rounded-lg">
-                          <HelpCircle size={24} className="text-purple-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-black">Fluxograma de Processos de Compra</h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Visualização do fluxo completo desde a requisição até a entrega
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <BadgeStatus intent="purple" weight="medium">PDF • 0.8 MB</BadgeStatus>
-                            <span className="text-xs text-gray-500">Atualizado em 20/12/2023</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Eye size={16} className="mr-2" />
-                        Abrir
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="bg-yellow-100 p-3 rounded-lg">
-                          <HelpCircle size={24} className="text-yellow-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-black">Modelos de Documentos e Templates</h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Modelos padronizados para requisições, justificativas e termos
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <BadgeStatus intent="warning" weight="medium">ZIP • 3.2 MB</BadgeStatus>
-                            <span className="text-xs text-gray-500">Atualizado em 08/01/2024</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Eye size={16} className="mr-2" />
-                        Baixar
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="bg-orange-100 p-3 rounded-lg">
-                          <HelpCircle size={24} className="text-orange-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-black">Legislação e Normativas Aplicáveis</h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Compilação de leis, decretos e normativas que regem as compras públicas
-                          </p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <BadgeStatus intent="orange" weight="medium">PDF • 8.5 MB</BadgeStatus>
-                            <span className="text-xs text-gray-500">Atualizado em 01/01/2024</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button size="sm" variant="outline">
-                        <Eye size={16} className="mr-2" />
-                        Abrir
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <div className="p-8 text-center text-gray-500">
+                    Nenhum download institucional disponível no momento.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1569,7 +1414,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                   </Button>
                   <Button
                     className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
-                    onClick={salvarNovoFaq}
+                    onClick={() => void salvarNovoFaq()}
                     disabled={!novaPergunta.trim() || !novaResposta.trim() || !novaCategoria}
                   >
                     {faqEmEdicao !== null ? 'Salvar Alterações' : 'Salvar'}
@@ -1642,7 +1487,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
               className="bg-red-600 hover:bg-red-700 text-white"
               onClick={() => {
                 if (faqToDelete !== null) {
-                  excluirFaq(faqToDelete);
+                  void excluirFaq(faqToDelete);
                 }
                 setIsDeleteFaqDialogOpen(false);
                 setFaqToDelete(null);

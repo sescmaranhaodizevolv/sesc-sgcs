@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Calendar, Edit, Info, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { BadgeStatus } from "@/components/ui/badge-status";
 import { Button } from "@/components/ui/button";
@@ -24,115 +25,158 @@ import { Textarea } from "@/components/ui/textarea";
 import { getBadgeMappingForStatus } from "@/lib/badge-mappings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
+import { getContratos, updateContrato, type Contrato as ContratoService } from "@/services/contratosService";
 
-interface Contrato {
+interface ContratoTabela {
   id: string;
+  numeroContrato: string;
   numeroProcesso: string;
   objeto: string;
   fornecedor: string;
   dataInicio: string;
   dataFim: string;
+  dataInicioInput: string;
+  dataFimInput: string;
   valor: string;
   status: string;
+  statusOriginal: string | null;
   gestorTRP: string;
   observacoes?: string;
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("pt-BR");
+}
+
+function toInputDate(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function formatCurrency(value?: number | null) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "R$ 0,00";
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatReadableCode(primary?: string | null, fallback?: string | null, prefix = "GCON") {
+  if (primary && primary.trim()) return primary;
+  if (!fallback || !fallback.trim()) return "-";
+  if (/^\d+$/.test(fallback.trim())) return `${prefix}-${fallback.padStart(4, "0")}`;
+  if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(fallback.trim())) return `${prefix}-${fallback.slice(0, 8).toUpperCase()}`;
+  return fallback;
+}
+
+function getDaysUntil(endDate?: string | null) {
+  if (!endDate) return null;
+  const target = new Date(endDate);
+  if (Number.isNaN(target.getTime())) return null;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dueDate = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+
+  return Math.ceil((dueDate.getTime() - today.getTime()) / 86400000);
+}
+
+function deriveContratoStatus(contrato: ContratoService) {
+  const baseStatus = contrato.status || "Ativo";
+  const dataFimReferencia = contrato.data_fim_atual ?? contrato.data_fim_original;
+  const daysUntil = getDaysUntil(dataFimReferencia);
+
+  if (!dataFimReferencia) return "Aguardando Datas";
+  if (baseStatus === "Encerrado" || baseStatus === "Suspenso") return baseStatus;
+  if (daysUntil !== null && daysUntil < 0) return "Vencido";
+  if (daysUntil !== null && daysUntil < 30) return "Próximo ao Vencimento";
+  return baseStatus === "Vigente" ? "Ativo" : baseStatus;
+}
+
 export default function GestaoContratosPage() {
+  const supabase = useMemo(() => createClient(), []);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [isNovoContratoModalOpen, setIsNovoContratoModalOpen] = useState(false);
   const [isEditarDatasModalOpen, setIsEditarDatasModalOpen] = useState(false);
-  const [contratoSelecionado, setContratoSelecionado] = useState<Contrato | null>(null);
+  const [contratoSelecionado, setContratoSelecionado] = useState<ContratoTabela | null>(null);
   const [paginaAtual, setPaginaAtual] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [contratosRaw, setContratosRaw] = useState<ContratoService[]>([]);
   const itensPorPagina = 5;
 
-  const [contratos, setContratos] = useState<Contrato[]>([
-    {
-      id: "CONT-2024-001",
-      numeroProcesso: "PROC-2024-015",
-      objeto: "Serviços de Limpeza e Conservação",
-      fornecedor: "Empresa ABC Ltda",
-      dataInicio: "01/01/2024",
-      dataFim: "31/12/2024",
-      valor: "R$ 145.000,00",
-      status: "Vigente",
-      gestorTRP: "Paula Mendes",
-    },
-    {
-      id: "CONT-2024-002",
-      numeroProcesso: "PROC-2024-022",
-      objeto: "Fornecimento de Material de Escritório",
-      fornecedor: "Fornecedor XYZ S.A",
-      dataInicio: "15/02/2024",
-      dataFim: "14/02/2025",
-      valor: "R$ 89.500,00",
-      status: "Vigente",
-      gestorTRP: "Ana Costa",
-    },
-    {
-      id: "CONT-2024-003",
-      numeroProcesso: "PROC-2024-033",
-      objeto: "Manutenção de Ar-Condicionado",
-      fornecedor: "Serviços DEF Eireli",
-      dataInicio: "01/03/2024",
-      dataFim: "28/02/2025",
-      valor: "R$ 67.200,00",
-      status: "Vigente",
-      gestorTRP: "Roberto Lima",
-    },
-    {
-      id: "CONT-2024-004",
-      numeroProcesso: "PROC-2024-045",
-      objeto: "Sistema de Gestão Integrada",
-      fornecedor: "Tecnologia GHI Ltda",
-      dataInicio: "",
-      dataFim: "",
-      valor: "R$ 250.000,00",
-      status: "Aguardando Datas",
-      gestorTRP: "Carlos Oliveira",
-      observacoes: "Contrato aprovado, pendente de registro de datas",
-    },
-    {
-      id: "CONT-2024-005",
-      numeroProcesso: "PROC-2024-051",
-      objeto: "Vigilância e Segurança Patrimonial",
-      fornecedor: "Segurança KLM Corp",
-      dataInicio: "",
-      dataFim: "",
-      valor: "R$ 198.300,00",
-      status: "Aguardando Datas",
-      gestorTRP: "Maria Silva",
-      observacoes: "Aguardando confirmação de início de prestação de serviços",
-    },
-    {
-      id: "CONT-2023-089",
-      numeroProcesso: "PROC-2023-145",
-      objeto: "Serviços de TI e Suporte Técnico",
-      fornecedor: "TI e Telecom QRS S.A",
-      dataInicio: "01/06/2023",
-      dataFim: "31/05/2024",
-      valor: "R$ 312.000,00",
-      status: "Encerrado",
-      gestorTRP: "João Santos",
-    },
-  ]);
-
-  const statusCounts = {
-    total: contratos.length,
-    vigente: contratos.filter((c) => c.status === "Vigente").length,
-    aguardando: contratos.filter((c) => c.status === "Aguardando Datas").length,
-    encerrado: contratos.filter((c) => c.status === "Encerrado").length,
+  const loadContratos = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getContratos();
+      setContratosRaw(data);
+    } catch (error) {
+      toast.error("Erro ao carregar contratos", {
+        description: error instanceof Error ? error.message : "Nao foi possivel carregar os contratos.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  useEffect(() => {
+    void loadContratos();
+  }, []);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("gestao-contratos-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "contratos" }, () => {
+        void loadContratos();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  const contratos = useMemo<ContratoTabela[]>(() => {
+    return contratosRaw.map((contrato) => ({
+      id: contrato.id,
+      numeroContrato: formatReadableCode(contrato.numero_contrato, contrato.id, "CTR"),
+      numeroProcesso: formatReadableCode(contrato.processo?.numero_requisicao, contrato.processo_id, "PROC"),
+      objeto: contrato.objeto || contrato.processo?.objeto || "-",
+      fornecedor: contrato.fornecedor?.razao_social || "-",
+      dataInicio: formatDate(contrato.data_inicio),
+      dataFim: formatDate(contrato.data_fim_atual ?? contrato.data_fim_original),
+      dataInicioInput: toInputDate(contrato.data_inicio),
+      dataFimInput: toInputDate(contrato.data_fim_atual ?? contrato.data_fim_original),
+      valor: formatCurrency(contrato.valor_anual),
+      status: deriveContratoStatus(contrato),
+      statusOriginal: contrato.status,
+      gestorTRP: contrato.responsavel?.nome || "-",
+      observacoes: contrato.processo?.observacoes_internas || undefined,
+    }));
+  }, [contratosRaw]);
+
+  const statusCounts = useMemo(
+    () => ({
+      total: contratos.length,
+      ativo: contratos.filter((contrato) => contrato.status === "Ativo").length,
+      aguardando: contratos.filter((contrato) => contrato.status === "Aguardando Datas").length,
+      encerrado: contratos.filter((contrato) => contrato.status === "Encerrado").length,
+    }),
+    [contratos]
+  );
 
   const filteredContratos = useMemo(() => {
     return contratos.filter((contrato) => {
+      const termo = searchTerm.toLowerCase();
       const matchesSearch =
         searchTerm === "" ||
-        contrato.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contrato.numeroProcesso.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contrato.objeto.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        contrato.fornecedor.toLowerCase().includes(searchTerm.toLowerCase());
+        contrato.numeroContrato.toLowerCase().includes(termo) ||
+        contrato.numeroProcesso.toLowerCase().includes(termo) ||
+        contrato.objeto.toLowerCase().includes(termo) ||
+        contrato.fornecedor.toLowerCase().includes(termo);
 
       const matchesStatus = statusFilter === "todos" || contrato.status === statusFilter;
 
@@ -148,35 +192,49 @@ export default function GestaoContratosPage() {
 
   const totalPaginas = Math.max(1, Math.ceil(filteredContratos.length / itensPorPagina));
 
+  useEffect(() => {
+    setPaginaAtual((prev) => Math.min(prev, totalPaginas));
+  }, [totalPaginas]);
+
   const contratosPaginados = useMemo(() => {
     const inicio = (paginaAtual - 1) * itensPorPagina;
     return sortedContratos.slice(inicio, inicio + itensPorPagina);
   }, [sortedContratos, paginaAtual]);
 
-  const handleSalvarDatas = (contratoId: string, dataInicio: string, dataFim: string) => {
-    setContratos((prev) =>
-      prev.map((c) =>
-        c.id === contratoId
-          ? {
-              ...c,
-              dataInicio,
-              dataFim,
-              status: "Vigente",
-            }
-          : c
-      )
-    );
-    toast.success("Datas do contrato atualizadas com sucesso!");
-    setIsEditarDatasModalOpen(false);
-    setContratoSelecionado(null);
+  const handleSalvarDatas = async (contrato: ContratoTabela, dataInicio: string, dataFim: string) => {
+    if (isSaving) return;
+
+    setIsSaving(true);
+
+    try {
+      const contratoAtualizado = await updateContrato(contrato.id, {
+        data_inicio: dataInicio || null,
+        data_fim_atual: dataFim,
+        data_fim_original: contrato.dataFimInput ? undefined : dataFim,
+        status: contrato.statusOriginal === "Encerrado" || contrato.statusOriginal === "Suspenso"
+          ? contrato.statusOriginal
+          : "Ativo",
+      });
+
+      setContratosRaw((prev) => prev.map((item) => (item.id === contrato.id ? contratoAtualizado : item)));
+      toast.success("Datas do contrato atualizadas com sucesso!");
+      setIsEditarDatasModalOpen(false);
+      setContratoSelecionado(null);
+    } catch (error) {
+      toast.error("Erro ao salvar datas", {
+        description: error instanceof Error ? error.message : "Nao foi possivel atualizar a vigencia.",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl text-black">Gestão de Contratos</h2>
-          <p className="text-gray-600 mt-1">Cadastro manual de datas de vigência contratual (substituição do sistema legado)</p>
+          <h2 className="text-3xl text-black">Gestao de Contratos</h2>
+          <p className="text-gray-600 mt-1">Cadastro manual de datas de vigencia contratual (substituicao do sistema legado)</p>
         </div>
         <Dialog open={isNovoContratoModalOpen} onOpenChange={setIsNovoContratoModalOpen}>
           <DialogTrigger asChild>
@@ -189,23 +247,23 @@ export default function GestaoContratosPage() {
             <div className="flex-1 overflow-y-auto px-6">
               <DialogHeader className="pt-6">
                 <DialogTitle>Cadastrar Novo Contrato</DialogTitle>
-                <DialogDescription>Registre um novo contrato com suas respectivas datas de vigência</DialogDescription>
+                <DialogDescription>Registre um novo contrato com suas respectivas datas de vigencia</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4 pb-6">
                 <Alert className="bg-blue-50 border-blue-200">
                   <Info className="h-4 w-4 text-blue-600" />
                   <AlertDescription className="text-sm text-blue-800">
-                    Estas informações substituem o fluxo automático do sistema legado. As datas registradas serão usadas para controle de vigência e alertas.
+                    Estas informacoes substituem o fluxo automatico do sistema legado. As datas registradas serao usadas para controle de vigencia e alertas.
                   </AlertDescription>
                 </Alert>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="cont-id">Número do Contrato *</Label>
+                    <Label htmlFor="cont-id">Numero do Contrato *</Label>
                     <Input id="cont-id" placeholder="CONT-2024-006" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="cont-processo">Número do Processo *</Label>
+                    <Label htmlFor="cont-processo">Numero do Processo *</Label>
                     <Input id="cont-processo" placeholder="PROC-2024-XXX" />
                   </div>
                 </div>
@@ -217,16 +275,16 @@ export default function GestaoContratosPage() {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="cont-fornecedor">Fornecedor/Contratada *</Label>
-                  <Input id="cont-fornecedor" placeholder="Razão Social da empresa" />
+                  <Input id="cont-fornecedor" placeholder="Razao Social da empresa" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="cont-data-inicio">Data de Início *</Label>
+                    <Label htmlFor="cont-data-inicio">Data de Inicio *</Label>
                     <Input id="cont-data-inicio" type="date" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="cont-data-fim">Data de Término *</Label>
+                    <Label htmlFor="cont-data-fim">Data de Termino *</Label>
                     <Input id="cont-data-fim" type="date" />
                   </div>
                 </div>
@@ -248,15 +306,15 @@ export default function GestaoContratosPage() {
                         <SelectItem value="roberto">Roberto Lima</SelectItem>
                         <SelectItem value="carlos">Carlos Oliveira</SelectItem>
                         <SelectItem value="maria">Maria Silva</SelectItem>
-                        <SelectItem value="joao">João Santos</SelectItem>
+                        <SelectItem value="joao">Joao Santos</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="cont-observacoes">Observações</Label>
-                  <Textarea id="cont-observacoes" placeholder="Informações adicionais sobre o contrato..." rows={2} />
+                  <Label htmlFor="cont-observacoes">Observacoes</Label>
+                  <Textarea id="cont-observacoes" placeholder="Informacoes adicionais sobre o contrato..." rows={2} />
                 </div>
               </div>
             </div>
@@ -272,7 +330,7 @@ export default function GestaoContratosPage() {
               <Button
                 className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
                 onClick={() => {
-                  toast.success("Contrato cadastrado com sucesso!");
+                  toast.info("O cadastro manual ainda depende da etapa de integracao do formulario.");
                   setIsNovoContratoModalOpen(false);
                 }}
               >
@@ -295,8 +353,8 @@ export default function GestaoContratosPage() {
         <Card className="border border-gray-200">
           <CardContent className="flex flex-col items-center justify-center h-full py-6">
             <div className="flex flex-col gap-1 items-center justify-center text-center">
-              <p className="text-2xl leading-8 text-[#00bc7d]">{statusCounts.vigente}</p>
-              <p className="text-xs leading-4 text-[#4a5565]">Vigentes</p>
+              <p className="text-2xl leading-8 text-[#00bc7d]">{statusCounts.ativo}</p>
+              <p className="text-xs leading-4 text-[#4a5565]">Ativos</p>
             </div>
           </CardContent>
         </Card>
@@ -348,9 +406,12 @@ export default function GestaoContratosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os Status</SelectItem>
-                  <SelectItem value="Vigente">Vigente</SelectItem>
+                  <SelectItem value="Ativo">Ativo</SelectItem>
+                  <SelectItem value="Próximo ao Vencimento">Próximo ao Vencimento</SelectItem>
                   <SelectItem value="Aguardando Datas">Aguardando Datas</SelectItem>
+                  <SelectItem value="Vencido">Vencido</SelectItem>
                   <SelectItem value="Encerrado">Encerrado</SelectItem>
+                  <SelectItem value="Suspenso">Suspenso</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -369,8 +430,8 @@ export default function GestaoContratosPage() {
                 <TableRow>
                   <SortableTableHead
                     label="Nº Contrato"
-                    onClick={() => sortContratos("id")}
-                    currentDirection={configContratos.key === "id" ? configContratos.direction : null}
+                    onClick={() => sortContratos("numeroContrato")}
+                    currentDirection={configContratos.key === "numeroContrato" ? configContratos.direction : null}
                     className="sticky left-0 z-10 min-w-[140px] bg-white"
                   />
                   <SortableTableHead
@@ -391,7 +452,7 @@ export default function GestaoContratosPage() {
                     currentDirection={configContratos.key === "fornecedor" ? configContratos.direction : null}
                     className="min-w-[200px]"
                   />
-                  <TableHead className="min-w-[140px]">Data Início</TableHead>
+                  <TableHead className="min-w-[140px]">Data Inicio</TableHead>
                   <TableHead className="min-w-[140px]">Data Fim</TableHead>
                   <SortableTableHead
                     label="Valor"
@@ -411,21 +472,21 @@ export default function GestaoContratosPage() {
                     currentDirection={configContratos.key === "gestorTRP" ? configContratos.direction : null}
                     className="min-w-[160px]"
                   />
-                  <TableHead className="min-w-[140px] text-center">Ações</TableHead>
+                  <TableHead className="min-w-[140px] text-center">Acoes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {contratosPaginados.map((contrato) => (
                   <TableRow key={contrato.id}>
-                    <TableCell className="text-black sticky left-0 z-10 bg-white">{contrato.id}</TableCell>
+                    <TableCell className="text-black sticky left-0 z-10 bg-white">{contrato.numeroContrato}</TableCell>
                     <TableCell className="text-gray-600">{contrato.numeroProcesso}</TableCell>
                     <TableCell className="text-gray-600">{contrato.objeto}</TableCell>
                     <TableCell className="text-gray-600">{contrato.fornecedor}</TableCell>
                     <TableCell className="text-gray-600">
-                      {contrato.dataInicio || <span className="text-red-500">Não informada</span>}
+                      {contrato.dataInicio || <span className="text-red-500">Nao informada</span>}
                     </TableCell>
                     <TableCell className="text-gray-600">
-                      {contrato.dataFim || <span className="text-red-500">Não informada</span>}
+                      {contrato.dataFim || <span className="text-red-500">Nao informada</span>}
                     </TableCell>
                     <TableCell className="text-black">{contrato.valor}</TableCell>
                     <TableCell>
@@ -465,13 +526,22 @@ export default function GestaoContratosPage() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {!isLoading && contratosPaginados.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                      Nenhum contrato encontrado.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
 
           <div className="flex items-center justify-between mt-4">
             <p className="text-sm text-gray-600">
-              Mostrando {(paginaAtual - 1) * itensPorPagina + 1} a {Math.min(paginaAtual * itensPorPagina, filteredContratos.length)} de {filteredContratos.length} contratos
+              {filteredContratos.length > 0
+                ? `Mostrando ${(paginaAtual - 1) * itensPorPagina + 1} a ${Math.min(paginaAtual * itensPorPagina, filteredContratos.length)} de ${filteredContratos.length} contratos`
+                : "Mostrando 0 de 0 contratos"}
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -483,15 +553,15 @@ export default function GestaoContratosPage() {
                 Anterior
               </Button>
               <span className="text-sm text-gray-600">
-                Página {paginaAtual} de {totalPaginas}
+                Pagina {totalPaginas === 0 ? 0 : paginaAtual} de {totalPaginas}
               </span>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setPaginaAtual((prev) => Math.min(totalPaginas, prev + 1))}
-                disabled={paginaAtual === totalPaginas}
+                disabled={paginaAtual === totalPaginas || filteredContratos.length === 0}
               >
-                Próxima
+                Proxima
               </Button>
             </div>
           </div>
@@ -506,19 +576,19 @@ export default function GestaoContratosPage() {
                 {contratoSelecionado.status === "Aguardando Datas" ? "Definir Datas do Contrato" : "Editar Datas do Contrato"}
               </DialogTitle>
               <DialogDescription>
-                Atualize as datas de início e término do contrato para controle de vigência
+                Atualize as datas de inicio e termino do contrato para controle de vigencia
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <Alert className="bg-yellow-50 border-yellow-200">
                 <Info className="h-4 w-4 text-yellow-600" />
                 <AlertDescription className="text-sm text-yellow-800">
-                  Estas datas são essenciais para alertas de vencimento e gestão de prorrogações. Certifique-se de que estão corretas.
+                  Estas datas sao essenciais para alertas de vencimento e gestao de prorrogacoes. Certifique-se de que estao corretas.
                 </AlertDescription>
               </Alert>
 
               <div className="space-y-2 p-4 bg-gray-50 rounded-lg">
-                <p className="text-sm"><span className="text-black">Contrato:</span> <span className="text-gray-600">{contratoSelecionado.id}</span></p>
+                <p className="text-sm"><span className="text-black">Contrato:</span> <span className="text-gray-600">{contratoSelecionado.numeroContrato}</span></p>
                 <p className="text-sm"><span className="text-black">Processo:</span> <span className="text-gray-600">{contratoSelecionado.numeroProcesso}</span></p>
                 <p className="text-sm"><span className="text-black">Objeto:</span> <span className="text-gray-600">{contratoSelecionado.objeto}</span></p>
                 <p className="text-sm"><span className="text-black">Fornecedor:</span> <span className="text-gray-600">{contratoSelecionado.fornecedor}</span></p>
@@ -526,28 +596,28 @@ export default function GestaoContratosPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="edit-data-inicio">Data de Início *</Label>
+                  <Label htmlFor="edit-data-inicio">Data de Inicio *</Label>
                   <Input
                     id="edit-data-inicio"
                     type="date"
-                    defaultValue={contratoSelecionado.dataInicio ? contratoSelecionado.dataInicio.split("/").reverse().join("-") : ""}
+                    defaultValue={contratoSelecionado.dataInicioInput}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="edit-data-fim">Data de Término *</Label>
+                  <Label htmlFor="edit-data-fim">Data de Termino *</Label>
                   <Input
                     id="edit-data-fim"
                     type="date"
-                    defaultValue={contratoSelecionado.dataFim ? contratoSelecionado.dataFim.split("/").reverse().join("-") : ""}
+                    defaultValue={contratoSelecionado.dataFimInput}
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="edit-observacoes">Observações</Label>
+                <Label htmlFor="edit-observacoes">Observacoes</Label>
                 <Textarea
                   id="edit-observacoes"
-                  placeholder="Informações sobre as datas definidas..."
+                  placeholder="Informacoes sobre as datas definidas..."
                   rows={2}
                   defaultValue={contratoSelecionado.observacoes}
                 />
@@ -565,14 +635,13 @@ export default function GestaoContratosPage() {
               </Button>
               <Button
                 className="bg-[#003366] hover:bg-[#002244] text-white"
+                disabled={isSaving}
                 onClick={() => {
                   const dataInicio = (document.getElementById("edit-data-inicio") as HTMLInputElement).value;
                   const dataFim = (document.getElementById("edit-data-fim") as HTMLInputElement).value;
 
                   if (dataInicio && dataFim) {
-                    const dataInicioFormatada = new Date(dataInicio).toLocaleDateString("pt-BR");
-                    const dataFimFormatada = new Date(dataFim).toLocaleDateString("pt-BR");
-                    handleSalvarDatas(contratoSelecionado.id, dataInicioFormatada, dataFimFormatada);
+                    void handleSalvarDatas(contratoSelecionado, dataInicio, dataFim);
                   } else {
                     toast.error("Por favor, preencha ambas as datas");
                   }

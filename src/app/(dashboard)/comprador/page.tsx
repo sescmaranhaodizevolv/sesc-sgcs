@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileText,
@@ -14,111 +15,186 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BadgeStatus } from "@/components/ui/badge-status";
 import { getBadgeMappingForPrioridade, getBadgeMappingForStatus } from "@/lib/badge-mappings";
+import { DetalhesProcessoModal } from "@/components/features/processos/DetalhesProcessoModal";
+import { useAuth } from "@/contexts/AuthContext";
+import { createClient } from "@/lib/supabase/client";
+import { getProcessos } from "@/services/processosService";
+import type { Processo, ProcessoComDetalhes } from "@/types";
 
-// Função para calcular dias entre duas datas
-const calcularDiasEntreDatas = (dataInicio: string, dataFim: string): number => {
-  const [diaI, mesI, anoI] = dataInicio.split("/");
-  const [diaF, mesF, anoF] = dataFim.split("/");
+function formatDateLabel(value: string | null | undefined) {
+  if (!value) return "-";
 
-  const dataInicioObj = new Date(parseInt(anoI), parseInt(mesI) - 1, parseInt(diaI));
-  const dataFimObj = new Date(parseInt(anoF), parseInt(mesF) - 1, parseInt(diaF));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
 
-  const diffTime = dataFimObj.getTime() - dataInicioObj.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return date.toLocaleDateString("pt-BR");
+}
 
-  return diffDays;
-};
+function isProcessoFinalizado(status: string | null | undefined) {
+  return ["Finalizado", "Aprovado", "Aprovada"].includes(status || "");
+}
 
-// Dados de processos do comprador com Lead Time
-const meusProcessosComLeadTime = [
-  {
-    id: "PROC-2024-142",
-    descricao: "Mobiliário para Escritório",
-    modalidade: "Pregão Eletrônico",
-    dataDistribuicao: "15/09/2024",
-    dataAprovacao: "25/10/2024",
-    status: "Aprovado",
-  },
-  {
-    id: "PROC-2024-139",
-    descricao: "Material de Escritório",
-    modalidade: "Dispensa",
-    dataDistribuicao: "20/09/2024",
-    dataAprovacao: "05/10/2024",
-    status: "Aprovado",
-  },
-  {
-    id: "PROC-2024-135",
-    descricao: "Equipamentos de TI",
-    modalidade: "Licitação",
-    dataDistribuicao: "10/09/2024",
-    dataAprovacao: "30/10/2024",
-    status: "Aprovado",
-  },
-  {
-    id: "PROC-2024-128",
-    descricao: "Serviços de Manutenção",
-    modalidade: "Pregão Eletrônico",
-    dataDistribuicao: "05/09/2024",
-    dataAprovacao: "20/10/2024",
-    status: "Aprovado",
-  },
-  {
-    id: "PROC-2024-121",
-    descricao: "Material de Limpeza",
-    modalidade: "Dispensa",
-    dataDistribuicao: "01/09/2024",
-    dataAprovacao: "15/09/2024",
-    status: "Aprovado",
-  },
-];
-
-// Calcular Lead Time para cada processo
-const meusProcessosComDias = meusProcessosComLeadTime.map((processo) => ({
-  ...processo,
-  leadTime: calcularDiasEntreDatas(processo.dataDistribuicao, processo.dataAprovacao),
-}));
-
-// Calcular estatísticas
-const meusLeadTimes = meusProcessosComDias.map((p) => p.leadTime);
-const meuLeadTimeMedio = Math.round(meusLeadTimes.reduce((a, b) => a + b, 0) / meusLeadTimes.length);
-const meuLeadTimeMaisRapido = Math.min(...meusLeadTimes);
-const meuLeadTimeMaisLento = Math.max(...meusLeadTimes);
+function isProcessoAndamento(status: string | null | undefined) {
+  return status === "Em Andamento";
+}
 
 export default function CompradorDashboardPage() {
   const router = useRouter();
+  const { currentUser } = useAuth();
+  const supabase = useMemo(() => createClient(), []);
+  const nomeUsuarioLogado = currentUser?.user_metadata?.name || currentUser?.profile?.nome || "";
+  const [selectedProcess, setSelectedProcess] = useState<Processo | null>(null);
+  const [processosRaw, setProcessosRaw] = useState<ProcessoComDetalhes[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadProcessos = async () => {
+    setIsLoading(true);
+
+    try {
+      const data = await getProcessos();
+      setProcessosRaw(data);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadProcessos();
+  }, []);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("comprador-dashboard-processos")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "processos" },
+        () => {
+          void loadProcessos();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  const meusProcessos = useMemo(() => {
+    if (!currentUser?.id && !nomeUsuarioLogado) return [];
+
+    return processosRaw.filter(
+      (processo) =>
+        processo.responsavel_id === currentUser?.id ||
+        processo.responsavel?.nome === nomeUsuarioLogado
+    );
+  }, [currentUser?.id, nomeUsuarioLogado, processosRaw]);
+
+  const meusProcessosComLeadTime = useMemo(() => {
+    return meusProcessos
+      .filter((processo) => isProcessoFinalizado(processo.status))
+      .map((processo) => {
+        const dataInicio = processo.data_recebimento ?? processo.data_distribuicao;
+        const dataFim = processo.data_finalizacao ?? processo.data_fim;
+
+        if (!dataInicio || !dataFim) return null;
+
+        const inicio = new Date(dataInicio);
+        const fim = new Date(dataFim);
+
+        if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
+          return null;
+        }
+
+        const diffTime = fim.getTime() - inicio.getTime();
+        const leadTime = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+        return {
+          id: processo.id,
+          numeroRequisicao: processo.numero_requisicao || processo.id,
+          descricao: processo.objeto || processo.descricao || "-",
+          modalidade: processo.modalidade || "-",
+          dataDistribuicao: formatDateLabel(processo.data_distribuicao || processo.data_recebimento),
+          dataAprovacao: formatDateLabel(processo.data_finalizacao || processo.data_fim),
+          leadTime,
+        };
+      })
+      .filter((processo): processo is {
+        id: string;
+        numeroRequisicao: string;
+        descricao: string;
+        modalidade: string;
+        dataDistribuicao: string;
+        dataAprovacao: string;
+        leadTime: number;
+      } => processo !== null);
+  }, [meusProcessos]);
+
+  const meusLeadTimes = useMemo(() => meusProcessosComLeadTime.map((p) => p.leadTime), [meusProcessosComLeadTime]);
+
+  const meuLeadTimeMedio = useMemo(() => {
+    if (meusLeadTimes.length === 0) return null;
+    return Math.round(meusLeadTimes.reduce((a, b) => a + b, 0) / meusLeadTimes.length);
+  }, [meusLeadTimes]);
+
+  const meuLeadTimeMaisRapido = useMemo(() => {
+    if (meusLeadTimes.length === 0) return null;
+    return Math.min(...meusLeadTimes);
+  }, [meusLeadTimes]);
+
+  const meuLeadTimeMaisLento = useMemo(() => {
+    if (meusLeadTimes.length === 0) return null;
+    return Math.max(...meusLeadTimes);
+  }, [meusLeadTimes]);
+
+  const totalAprovados = meusProcessos.filter((processo) => isProcessoFinalizado(processo.status)).length;
+  const totalAguardandoDocumentacao = meusProcessos.filter(
+    (processo) => processo.status === "Aguardando Documentação"
+  ).length;
+
+  const totalProximoVencer = useMemo(() => {
+    const now = new Date();
+    const limite = new Date();
+    limite.setDate(now.getDate() + 30);
+
+    return meusProcessos.filter((processo) => {
+      if (!processo.data_fim) return false;
+      const dataFim = new Date(processo.data_fim);
+      if (Number.isNaN(dataFim.getTime())) return false;
+      return dataFim >= now && dataFim <= limite;
+    }).length;
+  }, [meusProcessos]);
 
   const stats = [
     {
       title: "Total de Processos",
-      value: "24",
+      value: String(meusProcessos.length),
       subtitle: "Sob minha responsabilidade",
       icon: FileText,
       iconColor: "text-blue-600",
       bgColor: "bg-blue-50",
-      trend: "+3 este mês",
+      trend: `${meusProcessos.length} no total`,
     },
     {
       title: "Aprovados",
-      value: "12",
+      value: String(totalAprovados),
       subtitle: "Processos concluídos",
       icon: CheckCircle,
       iconColor: "text-green-600",
       bgColor: "bg-green-50",
-      trend: "+4 neste mês",
+      trend: `${totalAprovados} concluídos`,
     },
     {
       title: "Aguardando Documentação",
-      value: "5",
+      value: String(totalAguardandoDocumentacao),
       subtitle: "Requerem atenção",
       icon: AlertTriangle,
       iconColor: "text-orange-600",
       bgColor: "bg-orange-50",
-      trend: "Revisar hoje",
+      trend: totalAguardandoDocumentacao > 0 ? "Revisar hoje" : "Sem pendências",
     },
     {
       title: "Próximo a Vencer",
-      value: "3",
+      value: String(totalProximoVencer),
       subtitle: "Contratos e prazos",
       icon: Calendar,
       iconColor: "text-purple-600",
@@ -127,38 +203,70 @@ export default function CompradorDashboardPage() {
     },
   ];
 
-  const processosRecentes = [
-    {
-      id: "PROC-2024-156",
-      titulo: "Aquisição de Material de Escritório",
-      status: "Em Andamento",
-      prazo: "15/11/2025",
-      fornecedores: 3,
-    },
-    {
-      id: "PROC-2024-148",
-      titulo: "Contratação de Serviços de Limpeza",
-      status: "Aguardando Documentação",
-      prazo: "12/11/2025",
-      fornecedores: 5,
-    },
-    {
-      id: "PROC-2024-142",
-      titulo: "Equipamentos de Informática",
-      status: "Em Andamento",
-      prazo: "20/11/2025",
-      fornecedores: 4,
-    },
-    {
-      id: "PROC-2024-139",
-      titulo: "Mobiliário para Escritório",
-      status: "Finalizado",
-      prazo: "08/11/2025",
-      fornecedores: 2,
-    },
-  ];
+  const processosRecentes = useMemo(() => {
+    return [...meusProcessos]
+      .sort((a, b) => {
+        const dataA = a.criado_em || a.data_recebimento || a.data_distribuicao;
+        const dataB = b.criado_em || b.data_recebimento || b.data_distribuicao;
+        const timestampA = dataA ? new Date(dataA).getTime() : 0;
+        const timestampB = dataB ? new Date(dataB).getTime() : 0;
+        return timestampB - timestampA;
+      })
+      .slice(0, 4)
+      .map((processo) => ({
+        id: processo.numero_requisicao || processo.id,
+        processoId: processo.id,
+        titulo: processo.objeto || processo.descricao || "-",
+        status: processo.status || "-",
+        prazo: formatDateLabel(processo.data_fim || processo.data_finalizacao || processo.data_recebimento || processo.criado_em),
+        fornecedores: processo.fornecedor ? 1 : 0,
+      }));
+  }, [meusProcessos]);
+
+  const processoMaisRapido = useMemo(() => {
+    if (meusProcessosComLeadTime.length === 0 || meuLeadTimeMaisRapido === null) return null;
+    return meusProcessos.find((processo) => {
+      const dataInicio = processo.data_recebimento ?? processo.data_distribuicao;
+      const dataFim = processo.data_finalizacao ?? processo.data_fim;
+      if (!dataInicio || !dataFim) return false;
+      const inicio = new Date(dataInicio);
+      const fim = new Date(dataFim);
+      if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) return false;
+      const diffTime = fim.getTime() - inicio.getTime();
+      const leadTime = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      return leadTime === meuLeadTimeMaisRapido;
+    }) || null;
+  }, [meuLeadTimeMaisRapido, meusProcessos, meusProcessosComLeadTime.length]);
+
+  const processoMaisLento = useMemo(() => {
+    if (meusProcessosComLeadTime.length === 0 || meuLeadTimeMaisLento === null) return null;
+    return meusProcessos.find((processo) => {
+      const dataInicio = processo.data_recebimento ?? processo.data_distribuicao;
+      const dataFim = processo.data_finalizacao ?? processo.data_fim;
+      if (!dataInicio || !dataFim) return false;
+      const inicio = new Date(dataInicio);
+      const fim = new Date(dataFim);
+      if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) return false;
+      const diffTime = fim.getTime() - inicio.getTime();
+      const leadTime = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      return leadTime === meuLeadTimeMaisLento;
+    }) || null;
+  }, [meuLeadTimeMaisLento, meusProcessos, meusProcessosComLeadTime.length]);
+
+  const processoSelecionadoDetalhes = useMemo(() => {
+    if (!selectedProcess) return null;
+
+    return {
+      ...selectedProcess,
+      numero_requisicao: selectedProcess.numero_requisicao || selectedProcess.numeroRequisicao || selectedProcess.id,
+      tipo: selectedProcess.modalidade,
+      dataInicio: selectedProcess.data_recebimento ?? selectedProcess.data_distribuicao,
+      regional: selectedProcess.requisitante ?? "-",
+    };
+  }, [selectedProcess]);
 
   const acoesPendentes = [
+    // TODO: Implementar leitura de alertas reais no futuro.
     {
       id: 1,
       tipo: "Documentação",
@@ -190,9 +298,12 @@ export default function CompradorDashboardPage() {
     router.push("/comprador/meus-processos");
   };
 
+  if (isLoading) {
+    return <div className="min-h-full bg-white" />;
+  }
+
   return (
     <div className="min-h-full bg-white">
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-8 py-6">
         <div>
           <h1 className="text-black">Dashboard do Comprador</h1>
@@ -200,9 +311,7 @@ export default function CompradorDashboardPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="px-8 py-6 space-y-6">
-        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {stats.map((stat, index) => {
             const Icon = stat.icon;
@@ -232,7 +341,6 @@ export default function CompradorDashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Processos Recentes */}
           <Card className="border border-gray-200">
             <CardHeader className="bg-gray-50 border-b border-gray-200 rounded-t-[16px] rounded-b-[0px] p-[24px]">
               <CardTitle className="flex items-center gap-2 font-normal text-[16px] py-[8px]">
@@ -240,13 +348,13 @@ export default function CompradorDashboardPage() {
                 Processos Recentes
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-[0px] pr-[24px] pb-[24px] pl-[24px]">
+            <CardContent className="pt-[24px] pr-[24px] pb-[24px] pl-[24px]">
               <div className="space-y-4">
                 {processosRecentes.map((processo) => (
                   <div
-                    key={processo.id}
+                    key={processo.processoId}
                     className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                    onClick={() => handleClickProcesso(processo.id)}
+                    onClick={() => handleClickProcesso(processo.processoId)}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
@@ -275,7 +383,6 @@ export default function CompradorDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Ações Pendentes */}
           <Card className="border border-gray-200">
             <CardHeader className="bg-gray-50 border-b border-gray-200 rounded-t-[16px] rounded-b-[0px]">
               <CardTitle className="flex items-center gap-2 font-normal text-[16px] py-[8px]">
@@ -283,7 +390,7 @@ export default function CompradorDashboardPage() {
                 Ações Pendentes
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-[0px] pr-[24px] pb-[24px] pl-[24px]">
+            <CardContent className="pt-[24px] pr-[24px] pb-[24px] pl-[24px]">
               <div className="space-y-4">
                 {acoesPendentes.map((acao) => (
                   <div key={acao.id} className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
@@ -311,7 +418,6 @@ export default function CompradorDashboardPage() {
           </Card>
         </div>
 
-        {/* Lead Time Section */}
         <div>
           <h3 className="text-2xl text-black mb-2 flex items-center gap-2">
             <Timer size={24} className="text-[#003366]" />
@@ -322,7 +428,6 @@ export default function CompradorDashboardPage() {
           </p>
         </div>
 
-        {/* Lead Time Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="border border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
@@ -335,12 +440,41 @@ export default function CompradorDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
-                <p className="text-2xl text-black">{meuLeadTimeMedio} dias</p>
-                <p className="text-sm text-gray-500">Baseado em {meusProcessosComDias.length} processos aprovados</p>
+                <p className="text-2xl text-black">{meuLeadTimeMedio !== null ? `${meuLeadTimeMedio} dias` : "N/A"}</p>
+                <p className="text-sm text-gray-500">Baseado em {meusProcessosComLeadTime.length} processos aprovados</p>
               </div>
             </CardContent>
           </Card>
 
+          <div className={`transition-transform ${processoMaisRapido ? "cursor-pointer hover:scale-[1.02]" : "cursor-not-allowed opacity-80"}`} onClick={() => processoMaisRapido && setSelectedProcess({
+            id: processoMaisRapido.id,
+            descricao: processoMaisRapido.descricao || processoMaisRapido.objeto || "-",
+            numeroRequisicao: processoMaisRapido.numero_requisicao || undefined,
+            requisitante: processoMaisRapido.requisitante?.nome || "-",
+            objeto: processoMaisRapido.objeto || processoMaisRapido.descricao || "-",
+            modalidade: processoMaisRapido.modalidade || "-",
+            empresa: processoMaisRapido.fornecedor?.razao_social || processoMaisRapido.empresa_vencedora || "-",
+            empresaVencedora: processoMaisRapido.empresa_vencedora || undefined,
+            status: (processoMaisRapido.status || "Pendente") as Processo["status"],
+            responsavel: processoMaisRapido.responsavel?.nome || "-",
+            prioridade: (processoMaisRapido.prioridade as Processo["prioridade"]) || "Baixa",
+            dataDistribuicao: formatDateLabel(processoMaisRapido.data_distribuicao),
+            dataRecebimento: formatDateLabel(processoMaisRapido.data_recebimento),
+            dataFinalizacao: formatDateLabel(processoMaisRapido.data_finalizacao),
+            dataFim: formatDateLabel(processoMaisRapido.data_fim),
+            numero_requisicao: processoMaisRapido.numero_requisicao,
+            responsavel_id: processoMaisRapido.responsavel_id,
+            requisitante_id: processoMaisRapido.requisitante_id,
+            fornecedor_id: processoMaisRapido.fornecedor_id,
+            empresa_vencedora: processoMaisRapido.empresa_vencedora,
+            observacoes_internas: processoMaisRapido.observacoes_internas,
+            data_distribuicao: processoMaisRapido.data_distribuicao,
+            data_recebimento: processoMaisRapido.data_recebimento,
+            data_finalizacao: processoMaisRapido.data_finalizacao,
+            data_fim: processoMaisRapido.data_fim,
+            criado_em: processoMaisRapido.criado_em,
+            atualizado_em: processoMaisRapido.atualizado_em,
+          })}>
           <Card className="border border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -352,12 +486,42 @@ export default function CompradorDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
-                <p className="text-2xl text-black">{meuLeadTimeMaisRapido} dias</p>
+                <p className="text-2xl text-black">{meuLeadTimeMaisRapido !== null ? `${meuLeadTimeMaisRapido} dias` : "N/A"}</p>
                 <p className="text-sm text-gray-500">Processo mais eficiente</p>
               </div>
             </CardContent>
           </Card>
+          </div>
 
+          <div className={`transition-transform ${processoMaisLento ? "cursor-pointer hover:scale-[1.02]" : "cursor-not-allowed opacity-80"}`} onClick={() => processoMaisLento && setSelectedProcess({
+            id: processoMaisLento.id,
+            descricao: processoMaisLento.descricao || processoMaisLento.objeto || "-",
+            numeroRequisicao: processoMaisLento.numero_requisicao || undefined,
+            requisitante: processoMaisLento.requisitante?.nome || "-",
+            objeto: processoMaisLento.objeto || processoMaisLento.descricao || "-",
+            modalidade: processoMaisLento.modalidade || "-",
+            empresa: processoMaisLento.fornecedor?.razao_social || processoMaisLento.empresa_vencedora || "-",
+            empresaVencedora: processoMaisLento.empresa_vencedora || undefined,
+            status: (processoMaisLento.status || "Pendente") as Processo["status"],
+            responsavel: processoMaisLento.responsavel?.nome || "-",
+            prioridade: (processoMaisLento.prioridade as Processo["prioridade"]) || "Baixa",
+            dataDistribuicao: formatDateLabel(processoMaisLento.data_distribuicao),
+            dataRecebimento: formatDateLabel(processoMaisLento.data_recebimento),
+            dataFinalizacao: formatDateLabel(processoMaisLento.data_finalizacao),
+            dataFim: formatDateLabel(processoMaisLento.data_fim),
+            numero_requisicao: processoMaisLento.numero_requisicao,
+            responsavel_id: processoMaisLento.responsavel_id,
+            requisitante_id: processoMaisLento.requisitante_id,
+            fornecedor_id: processoMaisLento.fornecedor_id,
+            empresa_vencedora: processoMaisLento.empresa_vencedora,
+            observacoes_internas: processoMaisLento.observacoes_internas,
+            data_distribuicao: processoMaisLento.data_distribuicao,
+            data_recebimento: processoMaisLento.data_recebimento,
+            data_finalizacao: processoMaisLento.data_finalizacao,
+            data_fim: processoMaisLento.data_fim,
+            criado_em: processoMaisLento.criado_em,
+            atualizado_em: processoMaisLento.atualizado_em,
+          })}>
           <Card className="border border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -369,21 +533,21 @@ export default function CompradorDashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
-                <p className="text-2xl text-black">{meuLeadTimeMaisLento} dias</p>
+                <p className="text-2xl text-black">{meuLeadTimeMaisLento !== null ? `${meuLeadTimeMaisLento} dias` : "N/A"}</p>
                 <p className="text-sm text-gray-500">Processo mais complexo</p>
               </div>
             </CardContent>
           </Card>
+          </div>
         </div>
 
-        {/* Meus Processos Aprovados com Lead Time */}
         <Card className="border border-gray-200 shadow-sm">
           <CardHeader>
             <CardTitle className="text-xl text-black">Meus Processos Aprovados (Histórico de Lead Time)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {meusProcessosComDias.map((processo, index) => (
+              {meusProcessosComLeadTime.map((processo, index) => (
                 <div
                   key={index}
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
@@ -391,7 +555,7 @@ export default function CompradorDashboardPage() {
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm text-black">{processo.id}</p>
+                      <p className="text-sm text-black">{processo.numeroRequisicao || processo.id}</p>
                       <BadgeStatus intent="neutral" weight="light" size="xs">
                         {processo.modalidade}
                       </BadgeStatus>
@@ -404,7 +568,7 @@ export default function CompradorDashboardPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg text-black">{processo.leadTime} dias</p>
+                    <p className="text-lg text-black">{`${processo.leadTime} dias`}</p>
                     <p className="text-xs text-gray-600">Lead Time</p>
                   </div>
                 </div>
@@ -413,7 +577,6 @@ export default function CompradorDashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Avisos Importantes */}
         <Card className="border border-blue-200 bg-blue-50">
           <CardContent className="p-6">
             <div className="flex items-start gap-3">
@@ -432,6 +595,12 @@ export default function CompradorDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      <DetalhesProcessoModal
+        isOpen={!!selectedProcess}
+        onClose={() => setSelectedProcess(null)}
+        processo={processoSelecionadoDetalhes}
+        tipo="diario"
+      />
     </div>
   );
 }

@@ -34,6 +34,7 @@ export const statusProcessoMapping: Record<string, BadgeMapping> = {
   "Em Andamento": { intent: "warning", weight: "medium" },
   Pendente: { intent: "info", weight: "light" },
   "Em Contestação": { intent: "info", weight: "medium" },
+  Contestada: { intent: "info", weight: "medium" },
   "Criação de contrato pendente": { intent: "warning", weight: "medium" },
 
   // Orange - Atenção moderada
@@ -63,6 +64,7 @@ export const statusProcessoMapping: Record<string, BadgeMapping> = {
 
   // Neutral
   Cancelado: { intent: "neutral", weight: "medium" },
+  Arquivada: { intent: "neutral", weight: "medium" },
   Inativo: { intent: "neutral", weight: "light" },
   Válido: { intent: "success", weight: "light" },
 };

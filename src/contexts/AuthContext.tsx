@@ -1,132 +1,156 @@
 "use client";
 
-/**
- * AuthContext - Contexto de autenticação (simulado, sem backend)
- * Gerencia estado de login, perfil ativo e logout
- */
-import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
-import { useEffect } from "react";
-import type { UserProfile, Usuario } from "@/types";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useRouter } from "next/navigation";
+import type { Session, User } from "@supabase/supabase-js";
 import { useIdleLogout } from "@/hooks/useIdleLogout";
+import { createClient } from "@/lib/supabase/client";
+import type { UserProfile } from "@/types";
+
+type ProfileRow = {
+  id: string;
+  nome: string | null;
+  email: string | null;
+  perfil: UserProfile;
+  departamento: string | null;
+  ativo: boolean;
+  ultimo_acesso: string | null;
+  avatar_url: string | null;
+};
+
+type AuthUser = User & {
+  profile: ProfileRow | null;
+};
 
 interface AuthContextData {
-    isAuthInitialized: boolean;
-    isAuthenticated: boolean;
-    currentProfile: UserProfile;
-    currentUser: Usuario | null;
-    login: (profile?: UserProfile) => void;
-    logout: () => void;
-    switchProfile: (profile: UserProfile) => void;
+  isAuthInitialized: boolean;
+  isAuthenticated: boolean;
+  currentProfile: UserProfile;
+  currentUser: AuthUser | null;
+  session: Session | null;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextData | undefined>(undefined);
-const AUTH_SESSION_KEY = "sgcs_auth_session";
 
-/** Usuário mock para simulação */
-const MOCK_USER: Usuario = {
-    id: "user-001",
-    nome: "Administrador SESC",
-    email: "admin@sescma.com.br",
-    perfil: "admin",
-    ativo: true,
-    ultimoAcesso: new Date().toISOString(),
-    departamento: "Compras",
-};
+const DEFAULT_PROFILE: UserProfile = "requisitante";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [isAuthInitialized, setIsAuthInitialized] = useState(false);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [currentProfile, setCurrentProfile] = useState<UserProfile>("admin");
-    const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
+  const [isAuthInitialized, setIsAuthInitialized] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
 
-    useEffect(() => {
-        try {
-            const savedSession = sessionStorage.getItem(AUTH_SESSION_KEY);
+  const loadProfile = useCallback(
+    async (user: User): Promise<ProfileRow | null> => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
 
-            if (savedSession) {
-                const parsed = JSON.parse(savedSession) as {
-                    isAuthenticated?: boolean;
-                    currentProfile?: UserProfile;
-                    currentUser?: Usuario | null;
-                };
+      if (error) {
+        return null;
+      }
 
-                if (parsed.isAuthenticated) {
-                    const profile = parsed.currentProfile ?? "admin";
-                    setIsAuthenticated(true);
-                    setCurrentProfile(profile);
-                    setCurrentUser(parsed.currentUser ?? { ...MOCK_USER, perfil: profile });
-                }
-            }
-        } catch {
-            sessionStorage.removeItem(AUTH_SESSION_KEY);
-        } finally {
-            setIsAuthInitialized(true);
-        }
-    }, []);
+      return data as ProfileRow;
+    },
+    [supabase]
+  );
 
-    useEffect(() => {
-        if (!isAuthInitialized) return;
+  const syncFromSession = useCallback(
+    async (nextSession: Session | null) => {
+      setSession(nextSession);
 
-        if (isAuthenticated) {
-            sessionStorage.setItem(
-                AUTH_SESSION_KEY,
-                JSON.stringify({
-                    isAuthenticated: true,
-                    currentProfile,
-                    currentUser,
-                })
-            );
-        } else {
-            sessionStorage.removeItem(AUTH_SESSION_KEY);
-        }
-    }, [isAuthInitialized, isAuthenticated, currentProfile, currentUser]);
-
-    const login = useCallback((profile: UserProfile = "admin") => {
-        setIsAuthenticated(true);
-        setCurrentProfile(profile);
-        setCurrentUser({ ...MOCK_USER, perfil: profile });
-    }, []);
-
-    const logout = useCallback(() => {
-        setIsAuthenticated(false);
-        setCurrentProfile("admin");
+      if (!nextSession?.user) {
         setCurrentUser(null);
-    }, []);
+        setCurrentProfile(DEFAULT_PROFILE);
+        return;
+      }
 
-    const switchProfile = useCallback((profile: UserProfile) => {
-        setCurrentProfile(profile);
-        if (currentUser) {
-            setCurrentUser({ ...currentUser, perfil: profile });
-        }
-    }, [currentUser]);
+      const profile = await loadProfile(nextSession.user);
+      const resolvedProfile = profile?.perfil ?? DEFAULT_PROFILE;
 
-    // RNF-004: Logout automático por inatividade (15 min)
-    useIdleLogout({
-        onIdle: logout,
-        enabled: isAuthenticated,
+      setCurrentProfile(resolvedProfile);
+      setCurrentUser({ ...nextSession.user, profile });
+    },
+    [loadProfile]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const bootstrapAuth = async () => {
+      const {
+        data: { session: initialSession },
+      } = await supabase.auth.getSession();
+
+      if (!isMounted) return;
+
+      await syncFromSession(initialSession);
+
+      if (isMounted) {
+        setIsAuthInitialized(true);
+      }
+    };
+
+    bootstrapAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void syncFromSession(nextSession);
     });
 
-    const value = useMemo(
-        () => ({
-            isAuthInitialized,
-            isAuthenticated,
-            currentProfile,
-            currentUser,
-            login,
-            logout,
-            switchProfile,
-        }),
-        [isAuthInitialized, isAuthenticated, currentProfile, currentUser, login, logout, switchProfile]
-    );
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase, syncFromSession]);
 
-    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setCurrentUser(null);
+    setCurrentProfile(DEFAULT_PROFILE);
+    router.push("/login");
+  }, [router, supabase]);
+
+  useIdleLogout({
+    onIdle: () => {
+      void logout();
+    },
+    enabled: Boolean(session?.user),
+  });
+
+  const value = useMemo(
+    () => ({
+      isAuthInitialized,
+      isAuthenticated: Boolean(session?.user),
+      currentProfile,
+      currentUser,
+      session,
+      logout,
+    }),
+    [isAuthInitialized, session, currentProfile, currentUser, logout]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-/** Hook para consumir o contexto de autenticação */
 export function useAuth(): AuthContextData {
-    const ctx = useContext(AuthContext);
-    if (!ctx) {
-        throw new Error("useAuth deve ser usado dentro de <AuthProvider>");
-    }
-    return ctx;
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth deve ser usado dentro de <AuthProvider>");
+  }
+  return ctx;
 }

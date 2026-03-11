@@ -1,218 +1,231 @@
 "use client";
 
-/**
- * Header - Barra superior com notificações, troca de perfil e logout
- */
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-    Bell,
-    Menu,
-    Search,
-    ChevronDown,
-    LogOut,
-    User,
-    ShieldCheck,
-    FileText,
-    Eye,
-    CalendarDays,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bell, ChevronDown, LogOut, Menu, Search, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BadgeStatus } from "@/components/ui/badge-status";
 import { useAuth } from "@/contexts/AuthContext";
-import type { UserProfile, Notificacao } from "@/types";
+import { createClient } from "@/lib/supabase/client";
+import { getNotificacoes, marcarComoLida, type Notificacao } from "@/services/notificacoesService";
+import type { UserProfile } from "@/types";
 
-/** Notificações mock */
-const mockNotificacoes: Notificacao[] = [
-    { id: "1", tipo: "critical", titulo: "Penalidade vencida", mensagem: "Penalidade do processo 2024-010 venceu", data: "Há 2 horas", lida: false },
-    { id: "2", tipo: "warning", titulo: "Próximo ao vencimento", mensagem: "Contrato SCA-2024-015 vence em 10 dias", data: "Há 4 horas", lida: false },
-    { id: "3", tipo: "success", titulo: "Processo aprovado", mensagem: "PROC-2024-001 foi aprovado com sucesso", data: "Há 6 horas", lida: true },
-];
-
-const profileConfig: Record<UserProfile, { label: string; icon: React.ReactNode; defaultRoute: string }> = {
-    admin: { label: "Administrador", icon: <ShieldCheck size={16} />, defaultRoute: "/admin" },
-    comprador: { label: "Comprador/Responsável", icon: <FileText size={16} />, defaultRoute: "/comprador" },
-    requisitante: { label: "Requisitante/Visualizador", icon: <Eye size={16} />, defaultRoute: "/requisitante" },
-    gestora: { label: "Gestora de Contratos/TRP", icon: <CalendarDays size={16} />, defaultRoute: "/gestora" },
+const profileConfig: Record<UserProfile, { label: string }> = {
+  admin: { label: "Administrador" },
+  comprador: { label: "Comprador/Responsável" },
+  requisitante: { label: "Requisitante/Visualizador" },
+  gestora: { label: "Gestora de Contratos/TRP" },
 };
 
 interface HeaderProps {
-    onMenuClick?: () => void;
+  onMenuClick?: () => void;
+}
+
+function formatRelativeDate(value: string) {
+  const createdAt = new Date(value);
+  if (Number.isNaN(createdAt.getTime())) return "Agora";
+
+  const diffMs = Date.now() - createdAt.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) return "Agora";
+  if (diffMinutes < 60) return `Há ${diffMinutes} min`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `Há ${diffHours}h`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `Há ${diffDays}d`;
+}
+
+function getNotificationBadge(tipo: Notificacao["tipo"]) {
+  if (tipo === "critical") return { intent: "danger", label: "Crítica" } as const;
+  if (tipo === "warning") return { intent: "warning", label: "Aviso" } as const;
+  if (tipo === "success") return { intent: "success", label: "Sucesso" } as const;
+  return { intent: "info", label: "Info" } as const;
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
-    const { currentProfile, switchProfile, logout } = useAuth();
-    const router = useRouter();
-    const [showNotifications, setShowNotifications] = useState(false);
-    const [showProfileMenu, setShowProfileMenu] = useState(false);
-    const [notifications, setNotifications] = useState(mockNotificacoes);
+  const { currentProfile, currentUser, logout } = useAuth();
+  const supabase = useMemo(() => createClient(), []);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [notifications, setNotifications] = useState<Notificacao[]>([]);
 
-    const unreadCount = notifications.filter((n) => !n.lida).length;
+  const unreadCount = useMemo(() => notifications.filter((notification) => !notification.lida).length, [notifications]);
 
-    const handleProfileChange = (profile: UserProfile) => {
-        switchProfile(profile);
-        setShowProfileMenu(false);
-        router.push(profileConfig[profile].defaultRoute);
+  const loadNotifications = async () => {
+    if (!currentUser?.id) {
+      setNotifications([]);
+      return;
+    }
+
+    try {
+      const data = await getNotificacoes(10);
+      setNotifications(data);
+    } catch {
+      setNotifications([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadNotifications();
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const channel = supabase
+      .channel(`header-notificacoes-${currentUser.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notificacoes",
+          filter: `usuario_id=eq.${currentUser.id}`,
+        },
+        () => {
+          void loadNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
     };
+  }, [currentUser?.id, supabase]);
 
-    const handleLogout = () => {
-        logout();
-        router.push("/login");
-    };
+  const handleLogout = () => {
+    void logout();
+  };
 
-    const markAllRead = () => {
-        setNotifications((prev) => prev.map((n) => ({ ...n, lida: true })));
-    };
+  const handleOpenNotification = async (notification: Notificacao) => {
+    if (!notification.lida) {
+      await marcarComoLida(notification.id);
+      setNotifications((prev) => prev.map((item) => (item.id === notification.id ? { ...item, lida: true } : item)));
+    }
+  };
 
-    return (
-        <header className="h-16 bg-white border-b border-gray-200 px-4 lg:px-6 flex items-center justify-between flex-shrink-0">
-            {/* Left: Menu toggle (mobile) + Search */}
-            <div className="flex items-center gap-4">
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="lg:hidden"
-                    onClick={onMenuClick}
+  const markAllRead = async () => {
+    const unreadNotifications = notifications.filter((notification) => !notification.lida);
+    await Promise.all(unreadNotifications.map((notification) => marcarComoLida(notification.id)));
+    setNotifications((prev) => prev.map((notification) => ({ ...notification, lida: true })));
+  };
+
+  return (
+    <header className="h-16 bg-white border-b border-gray-200 px-4 lg:px-6 flex items-center justify-between flex-shrink-0">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
+          <Menu size={20} />
+        </Button>
+
+        <div className="hidden md:flex items-center gap-2 relative">
+          <Search size={16} className="absolute left-3 text-gray-400" />
+          <Input placeholder="Buscar..." className="pl-9 w-64 h-9" />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            onClick={() => {
+              setShowNotifications(!showNotifications);
+              setShowProfileMenu(false);
+            }}
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
+          </Button>
+
+          {showNotifications && (
+            <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg border border-gray-200 shadow-lg z-50">
+              <div className="p-3 border-b flex items-center justify-between">
+                <h4 className="text-sm font-semibold">Notificações</h4>
+                <button onClick={() => void markAllRead()} className="text-xs text-sesc-blue hover:underline" disabled={unreadCount === 0}>
+                  Marcar todas como lidas
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="px-4 py-10 text-center text-sm text-gray-500">
+                    Você não tem notificações no momento
+                  </div>
+                ) : (
+                  notifications.map((notification) => {
+                    const badge = getNotificationBadge(notification.tipo);
+
+                    return (
+                      <button
+                        key={notification.id}
+                        className={`w-full p-3 border-b last:border-0 hover:bg-gray-50 text-left ${!notification.lida ? "bg-blue-50/50" : ""}`}
+                        onClick={() => void handleOpenNotification(notification)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="pt-0.5">
+                            <BadgeStatus intent={badge.intent} weight="medium" size="sm">
+                              {badge.label}
+                            </BadgeStatus>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{notification.titulo}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">{notification.mensagem}</p>
+                            <p className="text-xs text-gray-400 mt-1">{formatRelativeDate(notification.criado_em)}</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => {
+              setShowProfileMenu(!showProfileMenu);
+              setShowNotifications(false);
+            }}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            <div className="w-8 h-8 bg-sesc-blue rounded-full flex items-center justify-center">
+              <User size={16} className="text-white" />
+            </div>
+            <div className="hidden md:block text-left">
+              <p className="text-sm font-medium text-gray-900">{currentUser?.profile?.nome ?? profileConfig[currentProfile].label}</p>
+              <p className="text-xs text-gray-500">{profileConfig[currentProfile].label}</p>
+            </div>
+            <ChevronDown size={16} className="text-gray-400" />
+          </button>
+
+          {showProfileMenu && (
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg border border-gray-200 shadow-lg z-50">
+              <div className="p-3 border-b border-gray-100">
+                <p className="text-sm font-medium text-gray-900">{currentUser?.profile?.nome ?? "Usuário"}</p>
+                <p className="text-xs text-gray-500 mt-1">{currentUser?.email ?? ""}</p>
+              </div>
+              <div className="border-t p-2">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-red-600 hover:bg-red-50 transition-colors"
                 >
-                    <Menu size={20} />
-                </Button>
-
-                <div className="hidden md:flex items-center gap-2 relative">
-                    <Search size={16} className="absolute left-3 text-gray-400" />
-                    <Input
-                        placeholder="Buscar..."
-                        className="pl-9 w-64 h-9"
-                    />
-                </div>
+                  <LogOut size={16} />
+                  <span>Sair do sistema</span>
+                </button>
+              </div>
             </div>
-
-            {/* Right: Notifications + Profile */}
-            <div className="flex items-center gap-3">
-                {/* Notificações */}
-                <div className="relative">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="relative"
-                        onClick={() => {
-                            setShowNotifications(!showNotifications);
-                            setShowProfileMenu(false);
-                        }}
-                    >
-                        <Bell size={20} />
-                        {unreadCount > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                                {unreadCount}
-                            </span>
-                        )}
-                    </Button>
-
-                    {showNotifications && (
-                        <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg border border-gray-200 shadow-lg z-50">
-                            <div className="p-3 border-b flex items-center justify-between">
-                                <h4 className="text-sm font-semibold">Notificações</h4>
-                                <button
-                                    onClick={markAllRead}
-                                    className="text-xs text-sesc-blue hover:underline"
-                                >
-                                    Marcar todas como lidas
-                                </button>
-                            </div>
-                            <div className="max-h-64 overflow-y-auto">
-                                {notifications.map((n) => (
-                                    <div
-                                        key={n.id}
-                                        className={`p-3 border-b last:border-0 hover:bg-gray-50 cursor-pointer ${!n.lida ? "bg-blue-50/50" : ""
-                                            }`}
-                                    >
-                                        <div className="flex items-start gap-2">
-                                            <div
-                                                className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.tipo === "critical"
-                                                        ? "bg-red-500"
-                                                        : n.tipo === "warning"
-                                                            ? "bg-yellow-500"
-                                                            : n.tipo === "success"
-                                                                ? "bg-green-500"
-                                                                : "bg-blue-500"
-                                                    }`}
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 truncate">
-                                                    {n.titulo}
-                                                </p>
-                                                <p className="text-xs text-gray-500">{n.mensagem}</p>
-                                                <p className="text-xs text-gray-400 mt-1">{n.data}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Perfil e Troca */}
-                <div className="relative">
-                    <button
-                        onClick={() => {
-                            setShowProfileMenu(!showProfileMenu);
-                            setShowNotifications(false);
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-                    >
-                        <div className="w-8 h-8 bg-sesc-blue rounded-full flex items-center justify-center">
-                            <User size={16} className="text-white" />
-                        </div>
-                        <div className="hidden md:block text-left">
-                            <p className="text-sm font-medium text-gray-900">
-                                {profileConfig[currentProfile].label}
-                            </p>
-                            <p className="text-xs text-gray-500">SESC Maranhão</p>
-                        </div>
-                        <ChevronDown size={16} className="text-gray-400" />
-                    </button>
-
-                    {showProfileMenu && (
-                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg border border-gray-200 shadow-lg z-50">
-                            <div className="p-2">
-                                <p className="px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase">
-                                    Trocar Perfil
-                                </p>
-                                {(Object.keys(profileConfig) as UserProfile[]).map((profile) => (
-                                    <button
-                                        key={profile}
-                                        onClick={() => handleProfileChange(profile)}
-                                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${currentProfile === profile
-                                                ? "bg-blue-50 text-sesc-blue font-medium"
-                                                : "text-gray-700 hover:bg-gray-100"
-                                            }`}
-                                    >
-                                        {profileConfig[profile].icon}
-                                        <span className="flex-1 text-left">
-                                            {profileConfig[profile].label}
-                                        </span>
-                                        {currentProfile === profile && (
-                                            <BadgeStatus intent="info" weight="light" size="xs">
-                                                Ativo
-                                            </BadgeStatus>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="border-t p-2">
-                                <button
-                                    onClick={handleLogout}
-                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                >
-                                    <LogOut size={16} />
-                                    <span>Sair do sistema</span>
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </header>
-    );
+          )}
+        </div>
+      </div>
+    </header>
+  );
 }

@@ -15,26 +15,15 @@ import {
     TrendingDown,
     Timer,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BadgeStatus } from "@/components/ui/badge-status";
 import { DashboardCard } from "@/components/features/DashboardCard";
 import { DetalhesProcessoModal } from "@/components/features/processos/DetalhesProcessoModal";
+import { createClient } from "@/lib/supabase/client";
 import { getBadgeMappingForStatus } from "@/lib/badge-mappings";
-import { calcularLeadTime } from "@/lib/lead-time-helpers";
-import {
-    calcularAlertasPenalidades,
-    calcularAlertasProrrogacoes,
-    processosComprador,
-} from "@/lib/dados-sistema";
-import type { Processo } from "@/types";
-
-/** Atividades recentes */
-const recentActivities = [
-    { title: "Processo #2024-001 aprovado", time: "Há 2 horas", status: "Aprovado", iconBg: "bg-[#00bc7d]" },
-    { title: "Processo #2024-002 em andamento", time: "Há 4 horas", status: "Em Andamento", iconBg: "bg-[#fe9a00]" },
-    { title: "Alerta de penalidade - Contrato #C789", time: "Há 6 horas", status: "Em Andamento", iconBg: "bg-[#fb2c36]" },
-];
+import { getAtividadesRecentesGlobais, getProcessos } from "@/services/processosService";
+import type { Processo, ProcessoComDetalhes, ProcessoTimeline } from "@/types";
 
 function isModalidadeLicitacao(modalidade: string): boolean {
     const modalidadeNormalizada = modalidade.toLowerCase();
@@ -50,36 +39,149 @@ function isModalidadeLicitacao(modalidade: string): boolean {
     );
 }
 
+function formatDateLabel(value: string | null | undefined) {
+    if (!value) return "-";
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+
+    return date.toLocaleDateString("pt-BR");
+}
+
+function mapProcessoDetalhadoParaDashboard(processo: ProcessoComDetalhes): Processo {
+    return {
+        id: processo.id,
+        descricao: processo.descricao || processo.objeto || "-",
+        numeroRequisicao: processo.numero_requisicao || undefined,
+        requisitante: processo.requisitante?.nome || "-",
+        objeto: processo.objeto || processo.descricao || "-",
+        modalidade: processo.modalidade || "-",
+        empresa: processo.fornecedor?.razao_social || processo.empresa_vencedora || "-",
+        empresaVencedora: processo.empresa_vencedora || undefined,
+        status: processo.status as Processo["status"],
+        responsavel: processo.responsavel?.nome || "-",
+        prioridade: (processo.prioridade as Processo["prioridade"]) || "Baixa",
+        dataDistribuicao: formatDateLabel(processo.data_distribuicao),
+        dataRecebimento: formatDateLabel(processo.data_recebimento),
+        dataFinalizacao: formatDateLabel(processo.data_finalizacao),
+        dataFim: formatDateLabel(processo.data_fim),
+        data_distribuicao: processo.data_distribuicao,
+        data_recebimento: processo.data_recebimento,
+        data_finalizacao: processo.data_finalizacao,
+        data_fim: processo.data_fim,
+        valor: typeof processo.valor === "number" ? Number(processo.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : undefined,
+        observacoesInternas: processo.observacoes_internas || undefined,
+        observacoes_internas: processo.observacoes_internas,
+        requisitante_id: processo.requisitante_id,
+        responsavel_id: processo.responsavel_id,
+        fornecedor_id: processo.fornecedor_id,
+        empresa_vencedora: processo.empresa_vencedora,
+        numero_requisicao: processo.numero_requisicao,
+        criado_em: processo.criado_em,
+        atualizado_em: processo.atualizado_em,
+    };
+}
+
 export default function AdminDashboardPage() {
     const [selectedProcess, setSelectedProcess] = useState<Processo | null>(null);
-    const alertasPenalidades = calcularAlertasPenalidades();
-    const alertasProrrogacoes = calcularAlertasProrrogacoes();
+    const [processosRaw, setProcessosRaw] = useState<ProcessoComDetalhes[]>([]);
+    const [atividadesRecentes, setAtividadesRecentes] = useState<ProcessoTimeline[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const supabase = useMemo(() => createClient(), []);
+
+    const loadDashboard = async () => {
+        setIsLoading(true);
+
+        try {
+            const [processosData, atividadesData] = await Promise.all([
+                getProcessos(),
+                getAtividadesRecentesGlobais(5),
+            ]);
+
+            setProcessosRaw(processosData);
+            setAtividadesRecentes(atividadesData);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        void loadDashboard();
+    }, []);
+
+    useEffect(() => {
+        const processosChannel = supabase
+            .channel("admin-dashboard-processos")
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "processos" },
+                () => {
+                    void loadDashboard();
+                }
+            )
+            .subscribe();
+
+        const timelineChannel = supabase
+            .channel("admin-dashboard-timeline")
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "processo_timeline" },
+                () => {
+                    void loadDashboard();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            void supabase.removeChannel(processosChannel);
+            void supabase.removeChannel(timelineChannel);
+        };
+    }, [supabase]);
+
+    const processos = useMemo(() => processosRaw.map(mapProcessoDetalhadoParaDashboard), [processosRaw]);
+
+    const alertasPenalidades = {
+        total: 0,
+        descricao: "Sem alertas no momento", // TODO: Implementar leitura de alertas complexos futuramente
+    };
+    const alertasProrrogacoes = {
+        total: 0,
+        descricao: "Sem alertas no momento", // TODO: Implementar leitura de alertas complexos futuramente
+    };
 
     const statusFinalizadores = useMemo(() => new Set(["Finalizado", "Aprovado", "Aprovada"]), []);
     const statusRejeicao = useMemo(() => new Set(["Rejeitado", "Rejeitada", "Cancelado"]), []);
 
-    const totalProcessos = processosComprador.length;
-    const totalAprovadosFinalizados = processosComprador.filter((p) => statusFinalizadores.has(p.status)).length;
-    const totalRejeitados = processosComprador.filter((p) => statusRejeicao.has(p.status)).length;
+    const totalProcessos = processos.length;
+    const totalAprovadosFinalizados = processos.filter((p) => statusFinalizadores.has(p.status)).length;
+    const totalRejeitados = processos.filter((p) => statusRejeicao.has(p.status)).length;
     const totalEmAndamento = totalProcessos - totalAprovadosFinalizados - totalRejeitados;
-    const totalAguardandoDocumentacao = processosComprador.filter(
+    const totalAguardandoDocumentacao = processos.filter(
         (p) => p.status === "Aguardando Documentação"
     ).length;
 
     const processosComLeadTime = useMemo(() => {
         const statusFinalizados = new Set(["Finalizado", "Aprovado", "Aprovada"]);
 
-        return processosComprador
+        return processos
             .filter((processo) => statusFinalizados.has(processo.status))
             .map((processo) => {
-                const dataInicio = processo.dataRecebimento ?? processo.dataDistribuicao;
-                const dataFim = processo.dataFinalizacao ?? processo.dataAprovacao;
+                const dataInicio = processo.data_recebimento ?? processo.data_distribuicao;
+                const dataFim = processo.data_finalizacao ?? processo.data_fim;
 
-                if (!dataInicio || !dataFim || dataInicio === "-" || dataFim === "-") {
+                if (!dataInicio || !dataFim) {
                     return null;
                 }
 
-                const leadTime = calcularLeadTime(dataInicio, dataFim);
+                const inicio = new Date(dataInicio);
+                const fim = new Date(dataFim);
+
+                if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
+                    return null;
+                }
+
+                const diffTime = fim.getTime() - inicio.getTime();
+                const leadTime = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
                 if (leadTime <= 0) {
                     return null;
                 }
@@ -90,13 +192,13 @@ export default function AdminDashboardPage() {
                 };
             })
             .filter((processo): processo is Processo & { leadTime: number } => processo !== null);
-    }, []);
+    }, [processos]);
 
     const processosLicitacao = useMemo(
         () =>
             processosComLeadTime.filter((p) => {
-                const dataInicio = p.dataRecebimento ?? p.dataDistribuicao;
-                const dataFim = p.dataFinalizacao ?? p.dataAprovacao;
+                const dataInicio = p.data_recebimento ?? p.data_distribuicao;
+                const dataFim = p.data_finalizacao ?? p.data_fim;
                 const statusFinalizado = ["finalizado", "aprovado", "aprovada"].includes(
                     p.status.toLowerCase()
                 );
@@ -105,9 +207,7 @@ export default function AdminDashboardPage() {
                     isModalidadeLicitacao(p.modalidade) &&
                     statusFinalizado &&
                     !!dataInicio &&
-                    !!dataFim &&
-                    dataInicio !== "-" &&
-                    dataFim !== "-"
+                    !!dataFim
                 );
             }),
         [processosComLeadTime]
@@ -144,6 +244,7 @@ export default function AdminDashboardPage() {
     };
 
     const metricasDiretas = useMemo(() => calcularMetricasLeadTime(processosDiretos), [processosDiretos]);
+    const hasProcessosDiretos = processosDiretos.length > 0;
 
     const {
         leadTimeMedioLicitacao,
@@ -162,8 +263,8 @@ export default function AdminDashboardPage() {
                       leadTimesLicitacao.length
               )
             : 0;
-        const leadTimeMaisRapidoLicitacao = hasLicitacao ? Math.min(...leadTimesLicitacao) : 0;
-        const leadTimeMaisLentoLicitacao = hasLicitacao ? Math.max(...leadTimesLicitacao) : 0;
+        const leadTimeMaisRapidoLicitacao = hasLicitacao && leadTimesLicitacao.length > 0 ? Math.min(...leadTimesLicitacao) : 0;
+        const leadTimeMaisLentoLicitacao = hasLicitacao && leadTimesLicitacao.length > 0 ? Math.max(...leadTimesLicitacao) : 0;
 
         const procMaisRapidoLic = hasLicitacao
             ? processosLicitacao.find((p) => p.leadTime === leadTimeMaisRapidoLicitacao) ?? null
@@ -212,15 +313,13 @@ export default function AdminDashboardPage() {
         () =>
             [...processosComLeadTime]
                 .sort((a, b) => {
-                    const dataA = a.dataFinalizacao ?? a.dataAprovacao ?? "01/01/1970";
-                    const dataB = b.dataFinalizacao ?? b.dataAprovacao ?? "01/01/1970";
-                    const [diaA, mesA, anoA] = dataA.split("/").map(Number);
-                    const [diaB, mesB, anoB] = dataB.split("/").map(Number);
+                    const dataA = a.data_finalizacao ?? a.data_fim;
+                    const dataB = b.data_finalizacao ?? b.data_fim;
 
-                    return (
-                        new Date(anoB, mesB - 1, diaB).getTime() -
-                        new Date(anoA, mesA - 1, diaA).getTime()
-                    );
+                    const timestampA = dataA ? new Date(dataA).getTime() : 0;
+                    const timestampB = dataB ? new Date(dataB).getTime() : 0;
+
+                    return timestampB - timestampA;
                 })
                 .slice(0, 3),
         [processosComLeadTime]
@@ -233,12 +332,21 @@ export default function AdminDashboardPage() {
 
         return {
             ...selectedProcess,
+            numero_requisicao: selectedProcess.numero_requisicao || selectedProcess.numeroRequisicao || selectedProcess.id,
             tipo: selectedProcess.modalidade,
             dataDistribuicaoRC: selectedProcess.dataDistribuicao,
-            dataInicio: selectedProcess.dataRecebimento ?? selectedProcess.dataDistribuicao,
+            dataInicio: selectedProcess.data_recebimento ?? selectedProcess.data_distribuicao,
             regional: selectedProcess.requisitante ?? "-",
         };
     }, [selectedProcess]);
+
+    const numeroProcessoPorId = useMemo(
+        () =>
+            new Map(
+                processosRaw.map((processo) => [processo.id, processo.numero_requisicao || processo.id])
+            ),
+        [processosRaw]
+    );
 
     const metrics = [
         { title: "Total de Processos", value: totalProcessos.toString(), subtitle: "Base atual de processos do sistema", icon: <FileText size={20} className="text-white" />, iconBg: "bg-sesc-blue" },
@@ -249,9 +357,12 @@ export default function AdminDashboardPage() {
         { title: "Prorrogações de Processos", value: alertasProrrogacoes.total.toString(), subtitle: alertasProrrogacoes.descricao, icon: <Calendar size={20} className="text-white" />, iconBg: "bg-[#2b7fff]" },
     ];
 
+    if (isLoading) {
+        return <div className="p-6" />;
+    }
+
     return (
         <div className="p-6 space-y-6">
-            {/* Título */}
             <div>
                 <h2 className="text-3xl text-black mb-2">Dashboard de Processos</h2>
                 <p className="text-gray-600">
@@ -259,14 +370,12 @@ export default function AdminDashboardPage() {
                 </p>
             </div>
 
-            {/* Cards de Métricas */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {metrics.map((m, i) => (
                     <DashboardCard key={i} {...m} />
                 ))}
             </div>
 
-            {/* Lead Time Header */}
             <div>
                 <h3 className="text-2xl text-black mb-2 flex items-center gap-2">
                     <Timer size={24} className="text-sesc-blue" />
@@ -277,19 +386,17 @@ export default function AdminDashboardPage() {
                 </p>
             </div>
 
-            {/* Lead Time Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <DashboardCard title="Lead Time Médio" value={`${metricasDiretas.medio} dias`} subtitle={`Baseado em ${processosDiretos.length} processos`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
+                <DashboardCard title="Lead Time Médio" value={hasProcessosDiretos ? `${metricasDiretas.medio} dias` : "N/A"} subtitle={`Baseado em ${processosDiretos.length} processos`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
                 <div className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={() => setSelectedProcess(metricasDiretas.procMaisRapido)}>
-                    <DashboardCard title="Processo Mais Rápido" value={`${metricasDiretas.maisRapido} dias`} subtitle="Melhor desempenho" icon={<TrendingDown size={20} className="text-white" />} iconBg="bg-[#00bc7d]" />
+                    <DashboardCard title="Processo Mais Rápido" value={hasProcessosDiretos ? `${metricasDiretas.maisRapido} dias` : "N/A"} subtitle="Melhor desempenho" icon={<TrendingDown size={20} className="text-white" />} iconBg="bg-[#00bc7d]" />
                 </div>
                 <div className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={() => setSelectedProcess(metricasDiretas.procMaisLento)}>
-                    <DashboardCard title="Processo Mais Lento" value={`${metricasDiretas.maisLento} dias`} subtitle="Requer atenção" icon={<TrendingUp size={20} className="text-white" />} iconBg="bg-[#ff6900]" />
+                    <DashboardCard title="Processo Mais Lento" value={hasProcessosDiretos ? `${metricasDiretas.maisLento} dias` : "N/A"} subtitle="Requer atenção" icon={<TrendingUp size={20} className="text-white" />} iconBg="bg-[#ff6900]" />
                 </div>
-                <DashboardCard title="Variação" value={`${Math.max(metricasDiretas.maisLento - metricasDiretas.maisRapido, 0)} dias`} subtitle="Amplitude de tempo" icon={<Clock size={20} className="text-white" />} iconBg="bg-[#2b7fff]" />
+                <DashboardCard title="Variação" value={hasProcessosDiretos ? `${Math.max(metricasDiretas.maisLento - metricasDiretas.maisRapido, 0)} dias` : "N/A"} subtitle="Amplitude de tempo" icon={<Clock size={20} className="text-white" />} iconBg="bg-[#2b7fff]" />
             </div>
 
-            {/* Lead Time de Licitações Header */}
             <div>
                 <h3 className="text-2xl text-black mb-2 flex items-center gap-2">
                     <FileCheck size={24} className="text-sesc-blue" />
@@ -300,9 +407,8 @@ export default function AdminDashboardPage() {
                 </p>
             </div>
 
-            {/* Lead Time de Licitações Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <DashboardCard title="Lead Time Médio" value={`${leadTimeMedioLicitacao} dias`} subtitle={`Baseado em ${processosLicitacao.length} licitações`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
+                <DashboardCard title="Lead Time Médio" value={hasLicitacao ? `${leadTimeMedioLicitacao} dias` : "N/A"} subtitle={`Baseado em ${processosLicitacao.length} licitações`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
                 <div
                     className={`transition-transform ${hasLicitacao && procMaisRapidoLic ? "cursor-pointer hover:scale-[1.02]" : "cursor-not-allowed opacity-80"}`}
                     onClick={() => {
@@ -325,7 +431,6 @@ export default function AdminDashboardPage() {
                 </div>
             </div>
 
-            {/* Lead Time por Modalidade + Processos Recentes */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card className="border border-gray-200 shadow-sm">
                     <CardHeader>
@@ -360,8 +465,8 @@ export default function AdminDashboardPage() {
                             {processosAprovadosRecentes.map((proc, i) => (
                                 <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                     <div className="flex-1">
-                                        <p className="text-sm text-black font-medium">{proc.id}</p>
-                                        <p className="text-xs text-gray-600">{proc.descricao}</p>
+                                        <p className="text-sm text-black font-medium">{proc.numero_requisicao || proc.numeroRequisicao || proc.id}</p>
+                                        <p className="text-xs text-gray-600">{proc.objeto ?? proc.descricao ?? "-"}</p>
                                         <BadgeStatus intent="neutral" weight="light" size="xs">
                                             {proc.modalidade}
                                         </BadgeStatus>
@@ -376,31 +481,25 @@ export default function AdminDashboardPage() {
                 </Card>
             </div>
 
-            {/* Atividades Recentes */}
             <Card className="border border-gray-200 shadow-sm">
                 <CardHeader>
                     <CardTitle className="text-xl text-black">Atividades Recentes</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
-                        {recentActivities.map((activity, i) => {
-                            const mapping = getBadgeMappingForStatus(activity.status);
+                        {atividadesRecentes.map((activity, i) => {
+                            const statusLabel = activity.status || "Pendente";
+                            const mapping = getBadgeMappingForStatus(statusLabel);
                             return (
                                 <div key={i} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                                    <div className={`p-2 rounded-lg ${activity.iconBg}`}>
-                                        {activity.status === "Aprovado" ? (
-                                            <CheckCircle size={16} className="text-white" />
-                                        ) : activity.status === "Em Andamento" ? (
-                                            <Clock size={16} className="text-white" />
-                                        ) : (
-                                            <AlertTriangle size={16} className="text-white" />
-                                        )}
+                                    <div className="p-2 rounded-lg bg-sesc-blue">
+                                        <Clock size={16} className="text-white" />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-sm text-black">{activity.title}</p>
-                                        <p className="text-xs text-gray-500">{activity.time}</p>
+                                        <p className="text-sm text-black">{activity.titulo || `Processo ${numeroProcessoPorId.get(activity.processo_id) || activity.processo_id}`}</p>
+                                        <p className="text-xs text-gray-500">{activity.mensagem || activity.status || "Atualização registrada"} • {new Date(activity.criado_em).toLocaleDateString("pt-BR")}</p>
                                     </div>
-                                    <BadgeStatus {...mapping}>{activity.status}</BadgeStatus>
+                                    <BadgeStatus {...mapping}>{statusLabel}</BadgeStatus>
                                 </div>
                             );
                         })}

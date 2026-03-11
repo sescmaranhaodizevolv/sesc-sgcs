@@ -140,6 +140,13 @@ export function Sidebar({ profile }: SidebarProps) {
 
     const isActive = (href?: string) => {
         if (!href) return false;
+
+        const isRootRoute = ["/admin", "/comprador", "/requisitante", "/gestora"].includes(href);
+
+        if (isRootRoute) {
+            return pathname === href;
+        }
+
         return pathname === href || pathname.startsWith(href + "/");
     };
 

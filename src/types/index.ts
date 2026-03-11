@@ -116,22 +116,70 @@ export interface Processo {
     leadTime?: number;
     /** ID da devolução ao admin (quando aplicável) */
     justificativaDevolucao?: string;
+    numero_requisicao?: string | null;
+    responsavel_id?: string | null;
+    requisitante_id?: string | null;
+    fornecedor_id?: string | null;
+    empresa_vencedora?: string | null;
+    observacoes_internas?: string | null;
+    lead_time?: number | null;
+    justificativa_devolucao?: string | null;
+    bloquear_envio_automatico?: boolean;
+    data_distribuicao?: string | null;
+    data_recebimento?: string | null;
+    data_finalizacao?: string | null;
+    data_inicio?: string | null;
+    data_fim?: string | null;
+    criado_em?: string;
+    atualizado_em?: string;
+}
+
+/** Processo com joins do Supabase */
+export interface ProcessoComDetalhes extends Omit<Processo, "fornecedor" | "responsavel" | "requisitante"> {
+    fornecedor?: { razao_social: string } | null;
+    responsavel?: { nome: string } | null;
+    requisitante?: { nome: string } | null;
+}
+
+/** Evento da timeline do processo */
+export interface ProcessoTimeline {
+    id: string;
+    processo_id: string;
+    titulo: string | null;
+    descricao: string | null;
+    responsavel_id: string | null;
+    status: string | null;
+    mensagem: string | null;
+    criado_em: string;
 }
 
 /** Fornecedor cadastrado */
 export interface Fornecedor {
     id: string;
-    razaoSocial: string;
+    razao_social: string;
     cnpj: string;
-    categoria: string;
-    email: string;
-    telefone?: string;
-    endereco?: string;
-    cidade?: string;
-    uf?: string;
-    cep?: string;
+    categoria: string | null;
+    email: string | null;
+    telefone: string | null;
+    endereco: string | null;
+    cidade: string | null;
+    uf: string | null;
+    cep: string | null;
     status: "Ativo" | "Inativo";
-    dataCadastro?: string;
+    data_cadastro: string;
+    criado_por: string | null;
+}
+
+/** Atestado anexado ao fornecedor */
+export interface AtestadoFornecedor {
+    id: string;
+    fornecedor_id: string;
+    nome_arquivo: string;
+    storage_path: string;
+    validade: string | null;
+    status: "Válido" | "Vencido";
+    enviado_por: string | null;
+    criado_em: string;
 }
 
 /** Fornecedor para Combobox (formato simplificado) */

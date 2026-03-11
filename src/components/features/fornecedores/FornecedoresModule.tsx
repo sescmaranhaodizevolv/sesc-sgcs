@@ -1,187 +1,328 @@
 "use client";
-import { FormEvent, useState } from "react";
-import { Building2, ArrowLeft, Save, AlertCircle, Plus, Search, FileText, Upload, Eye, Download, ChevronLeft, ChevronRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BadgeNew } from "@/components/ui/badge-new";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileInput } from "@/components/ui/file-input";
-import { Textarea } from "@/components/ui/textarea";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Eye,
+  FileText,
+  Plus,
+  Save,
+  Search,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { useTableSort } from "@/hooks/useTableSort";
+import {
+  createFornecedor,
+  deleteAtestado,
+  getAtestadoUrl,
+  getAtestados,
+  getFornecedores,
+  updateFornecedorStatus,
+  uploadAtestado,
+} from "@/services/fornecedoresService";
+import { getDesistencias, getPenalidades, type Desistencia, type Penalidade as PenalidadeFornecedor } from "@/services/penalidadesService";
+import type {
+  AtestadoFornecedor,
+  Fornecedor,
+} from "@/types";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { BadgeNew } from "@/components/ui/badge-new";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { FileInput } from "@/components/ui/file-input";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
-type FornecedorStatus = 'Ativo' | 'Inativo';
+type FornecedorStatus = Fornecedor["status"];
+type AtestadoStatus = AtestadoFornecedor["status"];
 
-interface Fornecedor {
-  id: number;
-  nome: string;
-  cnpj: string;
-  tipo: string;
-  categoria: string;
-  status: FornecedorStatus;
-  dataRegistro: string;
-  contatos: string;
-  atestados: number;
-}
-
-const StatusBadge = ({ status }: { status: FornecedorStatus | 'Válido' | 'Vencido' }) => {
-  const mappings = {
-    'Ativo': { intent: 'success' as const, weight: 'light' as const },
-    'Inativo': { intent: 'neutral' as const, weight: 'light' as const },
-    'Válido': { intent: 'success' as const, weight: 'light' as const },
-    'Vencido': { intent: 'danger' as const, weight: 'light' as const }
-  };
-
-  const mapping = mappings[status] || { intent: 'neutral' as const, weight: 'light' as const };
-
-  return (
-    <BadgeNew {...mapping}>
-      {status}
-    </BadgeNew>
-  );
+type FornecedorListItem = Fornecedor & {
+  atestados_count: number;
 };
 
-function ContratosEFornecedores() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('todos');
-  const [categoriaFilter, setCategoriaFilter] = useState('todas');
-  const [selectedAtestado, setSelectedAtestado] = useState<typeof atestados[0] | null>(null);
-  const [isViewerOpen, setIsViewerOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('fornecedores');
+type AtestadoListItem = AtestadoFornecedor & {
+  fornecedor_nome: string;
+  signed_url?: string;
+};
 
+type RiscoFornecedorItem = {
+  fornecedorId: string;
+  razaoSocial: string;
+  totalPenalidades: number;
+  penalidadesAtivas: number;
+  totalDesistencias: number;
+  ultimaOcorrencia: string;
+};
+
+type CadastroFornecedorFormData = {
+  razaoSocial: string;
+  nomeFantasia: string;
+  cnpj: string;
+  inscricaoEstadual: string;
+  categoria: string;
+  telefone: string;
+  email: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  contatoNome: string;
+  contatoCargo: string;
+  contatoTelefone: string;
+  contatoEmail: string;
+  observacoes: string;
+};
+
+const initialCadastroFornecedorFormData: CadastroFornecedorFormData = {
+  razaoSocial: "",
+  nomeFantasia: "",
+  cnpj: "",
+  inscricaoEstadual: "",
+  categoria: "",
+  telefone: "",
+  email: "",
+  cep: "",
+  endereco: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+  estado: "",
+  contatoNome: "",
+  contatoCargo: "",
+  contatoTelefone: "",
+  contatoEmail: "",
+  observacoes: "",
+};
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("pt-BR");
+}
+
+const StatusBadge = ({ status }: { status: FornecedorStatus | AtestadoStatus }) => {
+  const mappings = {
+    Ativo: { intent: "success" as const, weight: "light" as const },
+    Inativo: { intent: "neutral" as const, weight: "light" as const },
+    Válido: { intent: "success" as const, weight: "light" as const },
+    Vencido: { intent: "danger" as const, weight: "light" as const },
+  };
+
+  const mapping = mappings[status] || { intent: "neutral" as const, weight: "light" as const };
+
+  return <BadgeNew {...mapping}>{status}</BadgeNew>;
+};
+
+interface ContratosEFornecedoresProps {
+  refreshToken: number;
+  onCadastrarNovo: () => void;
+}
+
+function ContratosEFornecedores({ refreshToken, onCadastrarNovo }: ContratosEFornecedoresProps) {
+  const { currentUser } = useAuth();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("todos");
+  const [categoriaFilter, setCategoriaFilter] = useState("todas");
+  const [selectedAtestado, setSelectedAtestado] = useState<AtestadoListItem | null>(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("fornecedores");
   const [currentPage, setCurrentPage] = useState(1);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [atestados, setAtestados] = useState<AtestadoListItem[]>([]);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [uploadFornecedorId, setUploadFornecedorId] = useState("");
+  const [uploadValidade, setUploadValidade] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [penalidades, setPenalidades] = useState<PenalidadeFornecedor[]>([]);
+  const [desistencias, setDesistencias] = useState<Desistencia[]>([]);
+  const [selectedRiskFornecedorId, setSelectedRiskFornecedorId] = useState("");
+
   const itemsPerPage = 10;
 
   const [confirmAction, setConfirmAction] = useState<{
     open: boolean;
-    type: 'desativar' | 'ativar' | null;
+    type: "desativar" | "ativar" | null;
     fornecedor: Fornecedor | null;
   }>({ open: false, type: null, fornecedor: null });
+  const [confirmDeleteAtestado, setConfirmDeleteAtestado] = useState<{
+    open: boolean;
+    atestado: AtestadoListItem | null;
+  }>({ open: false, atestado: null });
 
-  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([
-    {
-      id: 1,
-      nome: 'Empresa ABC Ltda',
-      cnpj: '12.345.678/0001-90',
-      tipo: 'Pessoa Jurídica',
-      categoria: 'Serviços',
-      status: 'Ativo',
-      dataRegistro: '15/01/2024',
-      contatos: 'contato@empresaabc.com',
-      atestados: 3
-    },
-    {
-      id: 2,
-      nome: 'Fornecedor XYZ S.A',
-      cnpj: '98.765.432/0001-10',
-      tipo: 'Pessoa Jurídica',
-      categoria: 'Produtos',
-      status: 'Ativo',
-      dataRegistro: '20/12/2023',
-      contatos: 'comercial@fornecedorxyz.com',
-      atestados: 5
-    },
-    {
-      id: 3,
-      nome: 'Serviços DEF Eireli',
-      cnpj: '11.222.333/0001-44',
-      tipo: 'Pessoa Jurídica',
-      categoria: 'Serviços',
-      status: 'Inativo',
-      dataRegistro: '05/11/2023',
-      contatos: 'def@servicosdef.com.br',
-      atestados: 2
-    },
-    {
-      id: 4,
-      nome: 'Tecnologia GHI Ltda',
-      cnpj: '55.444.333/0001-22',
-      tipo: 'Pessoa Jurídica',
-      categoria: 'Tecnologia',
-      status: 'Ativo',
-      dataRegistro: '10/10/2023',
-      contatos: 'vendas@techghi.com',
-      atestados: 4
-    },
-    {
-      id: 5,
-      nome: 'Soluções PQR Eireli',
-      cnpj: '44.555.666/0001-77',
-      tipo: 'Pessoa Jurídica',
-      categoria: 'Tecnologia',
-      status: 'Ativo',
-      dataRegistro: '22/07/2023',
-      contatos: 'contato@pqr.com',
-      atestados: 6
-    },
-    {
-      id: 6,
-      nome: 'Produtos STU Ltda',
-      cnpj: '55.666.777/0001-88',
-      tipo: 'Pessoa Jurídica',
-      categoria: 'Produtos',
-      status: 'Inativo',
-      dataRegistro: '10/06/2023',
-      contatos: 'stu@produtos.com.br',
-      atestados: 2
+  const loadFornecedores = async () => {
+    try {
+      const data = await getFornecedores();
+      setFornecedores(data);
+    } catch (error) {
+      toast.error("Erro ao carregar fornecedores", {
+        description: error instanceof Error ? error.message : "Nao foi possivel buscar os fornecedores.",
+      });
     }
-  ]);
+  };
 
-  const atestados = [
-    {
-      id: 1,
-      fornecedor: 'Empresa ABC Ltda',
-      processo: '2024-001',
-      tipoAtestado: 'Capacidade Técnica',
-      dataEmissao: '15/01/2024',
-      validade: '15/01/2025',
-      status: 'Válido',
-      arquivo: 'atestado_abc_001.pdf',
-      responsavel: 'Maria Silva'
-    },
-    {
-      id: 2,
-      fornecedor: 'Fornecedor XYZ S.A',
-      processo: '2023-089',
-      tipoAtestado: 'Capacidade Técnica',
-      dataEmissao: '20/12/2023',
-      validade: '20/12/2024',
-      status: 'Válido',
-      arquivo: 'atestado_xyz_089.pdf',
-      responsavel: 'João Santos'
-    },
-    {
-      id: 3,
-      fornecedor: 'Tecnologia GHI Ltda',
-      processo: '2024-004',
-      tipoAtestado: 'Capacidade Técnica',
-      dataEmissao: '10/10/2023',
-      validade: '10/10/2024',
-      status: 'Vencido',
-      arquivo: 'atestado_ghi_004.pdf',
-      responsavel: 'Ana Costa'
+  const loadRiscos = async () => {
+    try {
+      const [penalidadesData, desistenciasData] = await Promise.all([getPenalidades(), getDesistencias()]);
+      setPenalidades(penalidadesData);
+      setDesistencias(desistenciasData);
+    } catch (error) {
+      toast.error("Erro ao carregar histórico de riscos", {
+        description: error instanceof Error ? error.message : "Nao foi possivel buscar riscos do fornecedor.",
+      });
     }
-  ];
+  };
 
-  const { items: sortedAtestados, requestSort: sortAtestados, sortConfig: configAtestados } = useTableSort(atestados);
+  const loadAtestados = async (fornecedoresBase: Fornecedor[]) => {
+    if (fornecedoresBase.length === 0) {
+      setAtestados([]);
+      return;
+    }
 
-  const filteredFornecedores = fornecedores.filter(fornecedor => {
-    const matchesSearch = fornecedor.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    try {
+      const atestadosPorFornecedor = await Promise.all(
+        fornecedoresBase.map(async (fornecedor) => {
+          const fornecedorAtestados = await getAtestados(fornecedor.id);
+          return fornecedorAtestados.map((atestado) => ({
+            ...atestado,
+            fornecedor_nome: fornecedor.razao_social,
+          }));
+        })
+      );
+
+      setAtestados(atestadosPorFornecedor.flat());
+    } catch (error) {
+      toast.error("Erro ao carregar atestados", {
+        description: error instanceof Error ? error.message : "Nao foi possivel buscar os atestados.",
+      });
+    }
+  };
+
+  useEffect(() => {
+    void loadFornecedores();
+  }, [refreshToken]);
+
+  useEffect(() => {
+    void loadRiscos();
+  }, [refreshToken]);
+
+  useEffect(() => {
+    void loadAtestados(fornecedores);
+  }, [fornecedores]);
+
+  const fornecedoresComAtestados = useMemo<FornecedorListItem[]>(() => {
+    const atestadosCountMap = atestados.reduce<Record<string, number>>((acc, atestado) => {
+      acc[atestado.fornecedor_id] = (acc[atestado.fornecedor_id] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return fornecedores.map((fornecedor) => ({
+      ...fornecedor,
+      atestados_count: atestadosCountMap[fornecedor.id] ?? 0,
+    }));
+  }, [atestados, fornecedores]);
+
+  useEffect(() => {
+    if (!selectedRiskFornecedorId && fornecedores.length > 0) {
+      setSelectedRiskFornecedorId(fornecedores[0].id);
+    }
+  }, [fornecedores, selectedRiskFornecedorId]);
+
+  const riscosFornecedores = useMemo<RiscoFornecedorItem[]>(() => {
+    return fornecedores.map((fornecedor) => {
+      const penalidadesFornecedor = penalidades.filter((item) => item.fornecedor_id === fornecedor.id);
+      const desistenciasFornecedor = desistencias.filter((item) => item.fornecedor_id === fornecedor.id);
+      const datas = [
+        ...penalidadesFornecedor.map((item) => item.data_ocorrencia),
+        ...desistenciasFornecedor.map((item) => item.criado_em),
+      ].filter(Boolean);
+
+      return {
+        fornecedorId: fornecedor.id,
+        razaoSocial: fornecedor.razao_social,
+        totalPenalidades: penalidadesFornecedor.filter((item) => item.status === "Aplicada").length,
+        penalidadesAtivas: penalidadesFornecedor.filter((item) => ["Registrada", "Aplicada", "Contestada"].includes(item.status)).length,
+        totalDesistencias: desistenciasFornecedor.length,
+        ultimaOcorrencia: datas.length > 0 ? formatDate(datas.sort().reverse()[0]) : "-",
+      };
+    });
+  }, [desistencias, fornecedores, penalidades]);
+
+  const riscoSelecionado = useMemo(() => riscosFornecedores.find((item) => item.fornecedorId === selectedRiskFornecedorId) || null, [riscosFornecedores, selectedRiskFornecedorId]);
+
+  const historicoRiscosFornecedor = useMemo(() => {
+    if (!selectedRiskFornecedorId) return [] as Array<{ tipo: string; descricao: string; data: string; status: string }>;
+
+    const penalidadesFornecedor = penalidades
+      .filter((item) => item.fornecedor_id === selectedRiskFornecedorId)
+      .map((item) => ({
+        tipo: "Penalidade",
+        descricao: item.tipo_penalidade,
+        data: formatDate(item.data_ocorrencia),
+        status: item.status,
+      }));
+
+    const desistenciasFornecedor = desistencias
+      .filter((item) => item.fornecedor_id === selectedRiskFornecedorId)
+      .map((item) => ({
+        tipo: "Desistência",
+        descricao: item.motivo,
+        data: formatDate(item.criado_em),
+        status: item.status,
+      }));
+
+    return [...penalidadesFornecedor, ...desistenciasFornecedor];
+  }, [desistencias, penalidades, selectedRiskFornecedorId]);
+
+  const filteredFornecedores = fornecedoresComAtestados.filter((fornecedor) => {
+    const matchesSearch =
+      fornecedor.razao_social.toLowerCase().includes(searchTerm.toLowerCase()) ||
       fornecedor.cnpj.includes(searchTerm);
-    const matchesStatus = statusFilter === 'todos' || fornecedor.status.toLowerCase() === statusFilter;
-    const matchesCategoria = categoriaFilter === 'todas' || fornecedor.categoria === categoriaFilter;
+    const matchesStatus = statusFilter === "todos" || fornecedor.status.toLowerCase() === statusFilter;
+    const matchesCategoria = categoriaFilter === "todas" || fornecedor.categoria === categoriaFilter;
     return matchesSearch && matchesStatus && matchesCategoria;
   });
 
-  const { items: sortedFornecedores, requestSort: sortFornecedores, sortConfig: configFornecedores } = useTableSort(filteredFornecedores);
+  const { items: sortedFornecedores, requestSort: sortFornecedores, sortConfig: configFornecedores } =
+    useTableSort(filteredFornecedores);
+  const { items: sortedAtestados, requestSort: sortAtestados, sortConfig: configAtestados } = useTableSort(atestados);
 
   const totalPages = Math.ceil(sortedFornecedores.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -190,23 +331,75 @@ function ContratosEFornecedores() {
 
   const fornecedorStats = {
     total: fornecedores.length,
-    ativos: fornecedores.filter(f => f.status === 'Ativo').length,
-    inativos: fornecedores.filter(f => f.status === 'Inativo').length,
-    atestadosValidos: atestados.filter(a => a.status === 'Válido').length
+    ativos: fornecedores.filter((fornecedor) => fornecedor.status === "Ativo").length,
+    inativos: fornecedores.filter((fornecedor) => fornecedor.status === "Inativo").length,
+    atestadosValidos: atestados.filter((atestado) => atestado.status === "Válido").length,
   };
 
-  const handleViewAtestado = (atestado: typeof atestados[0]) => {
-    setSelectedAtestado(atestado);
-    setIsViewerOpen(true);
+  const handleViewAtestado = async (atestado: AtestadoListItem) => {
+    const loadingToastId = toast.loading("Carregando visualizacao...");
+
+    try {
+      const signedUrl = await getAtestadoUrl(atestado.storage_path);
+      setSelectedAtestado({ ...atestado, signed_url: signedUrl });
+      setIsViewerOpen(true);
+      toast.success("Documento carregado", { id: loadingToastId });
+    } catch (error) {
+      toast.error("Erro ao abrir atestado", {
+        id: loadingToastId,
+        description: error instanceof Error ? error.message : "Nao foi possivel abrir o documento.",
+      });
+    }
   };
 
-  const handleDownloadAtestado = (atestado: typeof atestados[0]) => {
-    toast.success('Download iniciado', {
-      description: `Baixando arquivo: ${atestado.arquivo}`
-    });
+  const handleDownloadAtestado = async (atestado: AtestadoListItem) => {
+    const loadingToastId = toast.loading("Carregando documento...");
+
+    try {
+      const url = await getAtestadoUrl(atestado.storage_path);
+      window.open(url, "_blank", "noopener,noreferrer");
+      toast.success("Download iniciado", { id: loadingToastId });
+    } catch (error) {
+      toast.error("Erro ao baixar atestado", {
+        id: loadingToastId,
+        description: error instanceof Error ? error.message : "Nao foi possivel gerar o link do documento.",
+      });
+    }
   };
 
-  const openConfirmDialog = (type: 'desativar' | 'ativar', fornecedor: Fornecedor) => {
+  const openDeleteAtestadoDialog = (atestado: AtestadoListItem) => {
+    setConfirmDeleteAtestado({ open: true, atestado });
+  };
+
+  const closeDeleteAtestadoDialog = () => {
+    setConfirmDeleteAtestado({ open: false, atestado: null });
+  };
+
+  const handleDeleteAtestado = async () => {
+    const atestado = confirmDeleteAtestado.atestado;
+
+    if (!atestado) return;
+
+    const loadingToastId = toast.loading("Excluindo atestado...");
+
+    try {
+      await deleteAtestado(atestado.id, atestado.storage_path);
+      setAtestados((prev) => prev.filter((item) => item.id !== atestado.id));
+      if (selectedAtestado?.id === atestado.id) {
+        setSelectedAtestado(null);
+        setIsViewerOpen(false);
+      }
+      toast.success("Atestado excluido com sucesso", { id: loadingToastId });
+      closeDeleteAtestadoDialog();
+    } catch (error) {
+      toast.error("Erro ao excluir atestado", {
+        id: loadingToastId,
+        description: error instanceof Error ? error.message : "Nao foi possivel excluir o atestado.",
+      });
+    }
+  };
+
+  const openConfirmDialog = (type: "desativar" | "ativar", fornecedor: Fornecedor) => {
     setConfirmAction({ open: true, type, fornecedor });
   };
 
@@ -214,56 +407,80 @@ function ContratosEFornecedores() {
     setConfirmAction({ open: false, type: null, fornecedor: null });
   };
 
-  const executeAction = () => {
+  const executeAction = async () => {
     if (!confirmAction.fornecedor || !confirmAction.type) return;
 
-    const fornecedorId = confirmAction.fornecedor.id;
-    let novoStatus: FornecedorStatus;
-    let mensagem = '';
+    const novoStatus: FornecedorStatus = confirmAction.type === "desativar" ? "Inativo" : "Ativo";
+    const mensagem =
+      confirmAction.type === "desativar"
+        ? "Fornecedor desativado com sucesso. Ele nao podera mais participar de novos processos."
+        : "Fornecedor ativado com sucesso. Ele pode participar de processos novamente.";
 
-    switch (confirmAction.type) {
-      case 'desativar':
-        novoStatus = 'Inativo';
-        mensagem = 'Fornecedor desativado com sucesso. Ele não poderá mais participar de novos processos.';
-        break;
-      case 'ativar':
-        novoStatus = 'Ativo';
-        mensagem = 'Fornecedor ativado com sucesso. Ele pode participar de processos novamente.';
-        break;
+    const loadingToastId = toast.loading("Atualizando fornecedor...");
+
+    try {
+      await updateFornecedorStatus(confirmAction.fornecedor.id, novoStatus);
+      await loadFornecedores();
+      toast.success("Acao executada!", {
+        id: loadingToastId,
+        description: mensagem,
+      });
+      closeConfirmDialog();
+    } catch (error) {
+      toast.error("Erro ao atualizar fornecedor", {
+        id: loadingToastId,
+        description: error instanceof Error ? error.message : "Nao foi possivel atualizar o status.",
+      });
+    }
+  };
+
+  const handleUploadSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!uploadFornecedorId || !uploadFile || !currentUser?.id) {
+      toast.error("Dados incompletos para upload", {
+        description: "Selecione um fornecedor, escolha um arquivo e confirme seu usuario autenticado.",
+      });
+      return;
     }
 
-    setFornecedores(prevFornecedores =>
-      prevFornecedores.map(fornecedor =>
-        fornecedor.id === fornecedorId
-          ? { ...fornecedor, status: novoStatus }
-          : fornecedor
-      )
-    );
+    const loadingToastId = toast.loading("Carregando atestado...");
 
-    toast.success('Ação executada!', {
-      description: mensagem
-    });
-
-    closeConfirmDialog();
+    try {
+      await uploadAtestado(uploadFornecedorId, uploadFile, uploadValidade || null, currentUser.id);
+      await loadAtestados(fornecedores);
+      setUploadFornecedorId("");
+      setUploadValidade("");
+      setUploadFile(null);
+      setIsUploadDialogOpen(false);
+      toast.success("Atestado enviado com sucesso", { id: loadingToastId });
+    } catch (error) {
+      toast.error("Erro no upload do atestado", {
+        id: loadingToastId,
+        description: error instanceof Error ? error.message : "Nao foi possivel concluir o upload.",
+      });
+    }
   };
 
   const getActionDescription = () => {
-    if (!confirmAction.type || !confirmAction.fornecedor) return '';
+    if (!confirmAction.type || !confirmAction.fornecedor) return "";
 
     const descriptions = {
-      'desativar': 'O fornecedor será marcado como Inativo e não poderá mais participar de novos processos de compra. Seus atestados e histórico serão preservados.',
-      'ativar': 'O fornecedor será marcado como Ativo e poderá participar de processos de compra novamente. Certifique-se de que a documentação está atualizada.'
+      desativar:
+        "O fornecedor sera marcado como Inativo e nao podera mais participar de novos processos de compra. Seus atestados e historico serao preservados.",
+      ativar:
+        "O fornecedor sera marcado como Ativo e podera participar de processos de compra novamente. Certifique-se de que a documentacao esta atualizada.",
     };
 
     return descriptions[confirmAction.type];
   };
 
   const getActionTitle = () => {
-    if (!confirmAction.type) return '';
+    if (!confirmAction.type) return "";
 
     const titles = {
-      'desativar': 'Confirmar Desativação',
-      'ativar': 'Confirmar Ativação'
+      desativar: "Confirmar Desativacao",
+      ativar: "Confirmar Ativacao",
     };
 
     return titles[confirmAction.type];
@@ -274,68 +491,21 @@ function ContratosEFornecedores() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl text-black">Fornecedores e Atestados</h2>
-          <p className="text-gray-600 mt-1">Cadastro, listagem e gestão de fornecedores e atestados</p>
+          <p className="text-gray-600 mt-1">Cadastro, listagem e gestao de fornecedores e atestados</p>
         </div>
-        {activeTab === 'fornecedores' && (
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="bg-[#003366] hover:bg-[#002244] text-white">
-                <Plus size={20} className="mr-2" />
-                Cadastrar Fornecedor
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Cadastrar Novo Fornecedor</DialogTitle>
-                <DialogDescription>
-                  Preencha os dados para cadastrar um novo fornecedor no sistema.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="nome">Nome/Razão Social</Label>
-                  <Input placeholder="Nome da empresa" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="cnpj">CNPJ</Label>
-                  <Input placeholder="00.000.000/0000-00" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="categoria">Categoria</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="servicos">Serviços</SelectItem>
-                      <SelectItem value="produtos">Produtos</SelectItem>
-                      <SelectItem value="tecnologia">Tecnologia</SelectItem>
-                      <SelectItem value="construcao">Construção</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="contato">E-mail de Contato</Label>
-                  <Input placeholder="contato@empresa.com" type="email" />
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1">
-                    Cancelar
-                  </Button>
-                  <Button className="flex-1 bg-[#003366] hover:bg-[#002244] text-white">
-                    Cadastrar
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+        {activeTab === "fornecedores" && (
+          <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={onCadastrarNovo}>
+            <Plus size={20} className="mr-2" />
+            Cadastrar Fornecedor
+          </Button>
         )}
       </div>
 
       <Tabs defaultValue="fornecedores" className="w-full" onValueChange={setActiveTab}>
-        <TabsList className="grid w-full max-w-2xl grid-cols-2">
+        <TabsList className="grid w-full max-w-3xl grid-cols-3">
           <TabsTrigger value="fornecedores">Fornecedores</TabsTrigger>
-          <TabsTrigger value="atestados">Atestados de Capacidade Técnica</TabsTrigger>
+          <TabsTrigger value="atestados">Atestados de Capacidade Tecnica</TabsTrigger>
+          <TabsTrigger value="riscos">Histórico de Riscos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="fornecedores" className="space-y-4 mt-8">
@@ -387,7 +557,7 @@ function ContratosEFornecedores() {
                   </div>
                   <div>
                     <p className="text-2xl text-green-600">{fornecedorStats.atestadosValidos}</p>
-                    <p className="text-sm text-gray-600">Atestados</p>
+                    <p className="text-sm text-gray-600">Atestados Validos</p>
                   </div>
                 </div>
               </CardContent>
@@ -412,10 +582,13 @@ function ContratosEFornecedores() {
                   </div>
                 </div>
                 <div className="w-full md:w-48">
-                  <Select value={statusFilter} onValueChange={(value) => {
-                    setStatusFilter(value);
-                    setCurrentPage(1);
-                  }}>
+                  <Select
+                    value={statusFilter}
+                    onValueChange={(value) => {
+                      setStatusFilter(value);
+                      setCurrentPage(1);
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Filtrar por status" />
                     </SelectTrigger>
@@ -427,19 +600,25 @@ function ContratosEFornecedores() {
                   </Select>
                 </div>
                 <div className="w-full md:w-48">
-                  <Select value={categoriaFilter} onValueChange={(value) => {
-                    setCategoriaFilter(value);
-                    setCurrentPage(1);
-                  }}>
+                  <Select
+                    value={categoriaFilter}
+                    onValueChange={(value) => {
+                      setCategoriaFilter(value);
+                      setCurrentPage(1);
+                    }}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Filtrar por categoria" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todas">Todas as Categorias</SelectItem>
-                      <SelectItem value="Serviços">Serviços</SelectItem>
-                      <SelectItem value="Produtos">Produtos</SelectItem>
-                      <SelectItem value="Tecnologia">Tecnologia</SelectItem>
-                      <SelectItem value="Construção">Construção</SelectItem>
+                      {Array.from(new Set(fornecedores.map((fornecedor) => fornecedor.categoria).filter(Boolean))).map(
+                        (categoria) => (
+                          <SelectItem key={categoria} value={categoria ?? "-"}>
+                            {categoria}
+                          </SelectItem>
+                        )
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -452,7 +631,8 @@ function ContratosEFornecedores() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl text-black px-[0px] py-[8px]">Cadastro e Listagem de Fornecedores</CardTitle>
                 <p className="text-sm text-gray-600">
-                  Mostrando {startIndex + 1}-{Math.min(endIndex, filteredFornecedores.length)} de {filteredFornecedores.length} fornecedores
+                  Mostrando {filteredFornecedores.length === 0 ? 0 : startIndex + 1}-
+                  {Math.min(endIndex, filteredFornecedores.length)} de {filteredFornecedores.length} fornecedores
                 </p>
               </div>
             </CardHeader>
@@ -462,78 +642,78 @@ function ContratosEFornecedores() {
                   <TableHeader>
                     <TableRow>
                       <SortableTableHead
-                        label="Nome/Razão Social"
-                        onClick={() => sortFornecedores('nome')}
-                        currentDirection={configFornecedores?.key === 'nome' ? configFornecedores.direction : null}
+                        label="Nome/Razao Social"
+                        onClick={() => sortFornecedores("razao_social")}
+                        currentDirection={configFornecedores?.key === "razao_social" ? configFornecedores.direction : null}
                         className="sticky left-0 z-10 min-w-[250px] bg-white"
                       />
                       <SortableTableHead
                         label="CNPJ"
-                        onClick={() => sortFornecedores('cnpj')}
-                        currentDirection={configFornecedores?.key === 'cnpj' ? configFornecedores.direction : null}
+                        onClick={() => sortFornecedores("cnpj")}
+                        currentDirection={configFornecedores?.key === "cnpj" ? configFornecedores.direction : null}
                         className="min-w-[160px]"
                       />
                       <SortableTableHead
                         label="Categoria"
-                        onClick={() => sortFornecedores('categoria')}
-                        currentDirection={configFornecedores?.key === 'categoria' ? configFornecedores.direction : null}
+                        onClick={() => sortFornecedores("categoria")}
+                        currentDirection={configFornecedores?.key === "categoria" ? configFornecedores.direction : null}
                         className="min-w-[180px]"
                       />
                       <SortableTableHead
                         label="Status"
-                        onClick={() => sortFornecedores('status')}
-                        currentDirection={configFornecedores?.key === 'status' ? configFornecedores.direction : null}
+                        onClick={() => sortFornecedores("status")}
+                        currentDirection={configFornecedores?.key === "status" ? configFornecedores.direction : null}
                         className="min-w-[180px]"
                       />
                       <SortableTableHead
-                        label="Data Registro"
-                        onClick={() => sortFornecedores('dataRegistro')}
-                        currentDirection={configFornecedores?.key === 'dataRegistro' ? configFornecedores.direction : null}
+                        label="Data Cadastro"
+                        onClick={() => sortFornecedores("data_cadastro")}
+                        currentDirection={configFornecedores?.key === "data_cadastro" ? configFornecedores.direction : null}
                         className="min-w-[140px]"
                       />
                       <SortableTableHead
                         label="Atestados"
-                        onClick={() => sortFornecedores('atestados')}
-                        currentDirection={configFornecedores?.key === 'atestados' ? configFornecedores.direction : null}
+                        onClick={() => sortFornecedores("atestados_count")}
+                        currentDirection={configFornecedores?.key === "atestados_count" ? configFornecedores.direction : null}
                         className="min-w-[120px]"
                       />
                       <TableHead className="min-w-[160px]">Contato</TableHead>
-                      <TableHead className="min-w-[150px] text-center">Ações</TableHead>
+                      <TableHead className="min-w-[150px] text-center">Acoes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedFornecedores.length > 0 ? (
                       paginatedFornecedores.map((fornecedor) => (
                         <TableRow key={fornecedor.id}>
-                          <TableCell className="text-black sticky left-0 z-10 bg-white">{fornecedor.nome}</TableCell>
+                          <TableCell className="text-black sticky left-0 z-10 bg-white">{fornecedor.razao_social}</TableCell>
                           <TableCell className="text-gray-600">{fornecedor.cnpj}</TableCell>
-                          <TableCell className="text-gray-600">{fornecedor.categoria}</TableCell>
+                          <TableCell className="text-gray-600">{fornecedor.categoria ?? "-"}</TableCell>
                           <TableCell>
                             <StatusBadge status={fornecedor.status} />
                           </TableCell>
-                          <TableCell className="text-gray-600">{fornecedor.dataRegistro}</TableCell>
+                          <TableCell className="text-gray-600">{formatDate(fornecedor.data_cadastro)}</TableCell>
                           <TableCell className="text-center">
-                            <span className="text-blue-600">{fornecedor.atestados}</span>
+                            <span className="text-blue-600">{fornecedor.atestados_count}</span>
                           </TableCell>
-                          <TableCell className="text-gray-600">{fornecedor.contatos}</TableCell>
+                          <TableCell className="text-gray-600">{fornecedor.email ?? "-"}</TableCell>
                           <TableCell>
                             <div className="flex gap-2 justify-center">
-                              {fornecedor.status === 'Ativo' && (
+                              {fornecedor.status === "Ativo" && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => openConfirmDialog('desativar', fornecedor)}
+                                  onClick={() => openConfirmDialog("desativar", fornecedor)}
                                   className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                                   title="Desativar fornecedor"
                                 >
                                   Desativar
                                 </Button>
                               )}
-                              {fornecedor.status === 'Inativo' && (
+                              {fornecedor.status === "Inativo" && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => openConfirmDialog('ativar', fornecedor)}
+                                  onClick={() => openConfirmDialog("ativar", fornecedor)}
                                   className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
                                   title="Ativar fornecedor"
                                 >
@@ -557,14 +737,12 @@ function ContratosEFornecedores() {
 
               {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-                  <div className="text-sm text-gray-600">
-                    Página {currentPage} de {totalPages}
-                  </div>
+                  <div className="text-sm text-gray-600">Pagina {currentPage} de {totalPages}</div>
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
                     >
                       <ChevronLeft size={16} className="mr-1" />
@@ -573,10 +751,10 @@ function ContratosEFornecedores() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                       disabled={currentPage === totalPages}
                     >
-                      Próxima
+                      Proxima
                       <ChevronRight size={16} className="ml-1" />
                     </Button>
                   </div>
@@ -591,10 +769,10 @@ function ContratosEFornecedores() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xl text-black">Upload de Atestados de Capacidade Técnica</h3>
-                  <p className="text-sm text-gray-600 mt-1">Consulta vinculada aos processos</p>
+                  <h3 className="text-xl text-black">Upload de Atestados de Capacidade Tecnica</h3>
+                  <p className="text-sm text-gray-600 mt-1">Consulta vinculada aos fornecedores cadastrados</p>
                 </div>
-                <Dialog>
+                <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
                   <DialogTrigger asChild>
                     <Button className="bg-[#003366] hover:bg-[#002244] text-white">
                       <Upload size={20} className="mr-2" />
@@ -604,45 +782,43 @@ function ContratosEFornecedores() {
                   <DialogContent className="max-w-md">
                     <DialogHeader>
                       <DialogTitle>Upload de Atestado</DialogTitle>
-                      <DialogDescription>
-                        Faça o upload do atestado de capacidade técnica do fornecedor.
-                      </DialogDescription>
+                      <DialogDescription>Faca o upload do atestado de capacidade tecnica do fornecedor.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4">
+                    <form className="space-y-4" onSubmit={handleUploadSubmit}>
                       <div className="space-y-1.5">
                         <Label htmlFor="fornecedor">Fornecedor</Label>
-                        <Select>
+                        <Select value={uploadFornecedorId} onValueChange={setUploadFornecedorId}>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecione o fornecedor" />
                           </SelectTrigger>
                           <SelectContent>
                             {fornecedores
-                              .filter(f => f.status === 'Ativo')
-                              .map(fornecedor => (
-                                <SelectItem key={fornecedor.id} value={fornecedor.nome}>
-                                  {fornecedor.nome}
+                              .filter((fornecedor) => fornecedor.status === "Ativo")
+                              .map((fornecedor) => (
+                                <SelectItem key={fornecedor.id} value={fornecedor.id}>
+                                  {fornecedor.razao_social}
                                 </SelectItem>
                               ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="processo">Processo Vinculado</Label>
-                        <Input placeholder="Ex: 2024-001" />
+                        <Label htmlFor="validade">Validade</Label>
+                        <Input id="validade" type="date" value={uploadValidade} onChange={(e) => setUploadValidade(e.target.value)} />
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="arquivo">Arquivo do Atestado</Label>
-                        <FileInput id="arquivo" accept=".pdf,.doc,.docx" />
+                        <FileInput id="arquivo" accept=".pdf,.doc,.docx" onFileChange={setUploadFile} />
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1">
+                        <Button type="button" variant="outline" className="flex-1" onClick={() => setIsUploadDialogOpen(false)}>
                           Cancelar
                         </Button>
-                        <Button className="flex-1 bg-[#003366] hover:bg-[#002244] text-white">
+                        <Button type="submit" className="flex-1 bg-[#003366] hover:bg-[#002244] text-white">
                           Fazer Upload
                         </Button>
                       </div>
-                    </div>
+                    </form>
                   </DialogContent>
                 </Dialog>
               </div>
@@ -660,74 +836,142 @@ function ContratosEFornecedores() {
                     <TableRow>
                       <SortableTableHead
                         label="Fornecedor"
-                        onClick={() => sortAtestados('fornecedor')}
-                        currentDirection={configAtestados?.key === 'fornecedor' ? configAtestados.direction : null}
+                        onClick={() => sortAtestados("fornecedor_nome")}
+                        currentDirection={configAtestados?.key === "fornecedor_nome" ? configAtestados.direction : null}
                         className="sticky left-0 z-10 min-w-[200px] bg-white"
                       />
                       <SortableTableHead
-                        label="Processo"
-                        onClick={() => sortAtestados('processo')}
-                        currentDirection={configAtestados?.key === 'processo' ? configAtestados.direction : null}
-                        className="min-w-[120px]"
+                        label="Arquivo"
+                        onClick={() => sortAtestados("nome_arquivo")}
+                        currentDirection={configAtestados?.key === "nome_arquivo" ? configAtestados.direction : null}
+                        className="min-w-[220px]"
                       />
                       <SortableTableHead
-                        label="Tipo"
-                        onClick={() => sortAtestados('tipoAtestado')}
-                        currentDirection={configAtestados?.key === 'tipoAtestado' ? configAtestados.direction : null}
-                        className="min-w-[180px]"
+                        label="Criado em"
+                        onClick={() => sortAtestados("criado_em")}
+                        currentDirection={configAtestados?.key === "criado_em" ? configAtestados.direction : null}
+                        className="min-w-[140px]"
                       />
                       <SortableTableHead
-                        label="Data Emissão"
-                        onClick={() => sortAtestados('dataEmissao')}
-                        currentDirection={configAtestados?.key === 'dataEmissao' ? configAtestados.direction : null}
+                        label="Validade"
+                        onClick={() => sortAtestados("validade")}
+                        currentDirection={configAtestados?.key === "validade" ? configAtestados.direction : null}
                         className="min-w-[140px]"
                       />
                       <SortableTableHead
                         label="Status"
-                        onClick={() => sortAtestados('status')}
-                        currentDirection={configAtestados?.key === 'status' ? configAtestados.direction : null}
+                        onClick={() => sortAtestados("status")}
+                        currentDirection={configAtestados?.key === "status" ? configAtestados.direction : null}
                         className="min-w-[120px]"
                       />
-                      <SortableTableHead
-                        label="Responsável"
-                        onClick={() => sortAtestados('responsavel')}
-                        currentDirection={configAtestados?.key === 'responsavel' ? configAtestados.direction : null}
-                        className="min-w-[160px]"
-                      />
-                      <TableHead className="min-w-[120px]">Ações</TableHead>
+                      <TableHead className="min-w-[160px]">Enviado por</TableHead>
+                      <TableHead className="min-w-[120px]">Acoes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedAtestados.map((atestado) => (
-                      <TableRow key={atestado.id}>
-                        <TableCell className="text-black sticky left-0 z-10 bg-white">{atestado.fornecedor}</TableCell>
-                        <TableCell className="text-black">{atestado.processo}</TableCell>
-                        <TableCell className="text-gray-600">{atestado.tipoAtestado}</TableCell>
-                        <TableCell className="text-gray-600">{atestado.dataEmissao}</TableCell>
-                        <TableCell>
-                          <StatusBadge status={atestado.status as 'Válido' | 'Vencido'} />
-                        </TableCell>
-                        <TableCell className="text-gray-600">{atestado.responsavel}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleViewAtestado(atestado)}
-                            >
-                              <Eye size={16} />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDownloadAtestado(atestado)}
-                            >
-                              <Download size={16} />
-                            </Button>
-                          </div>
+                    {sortedAtestados.length > 0 ? (
+                      sortedAtestados.map((atestado) => (
+                        <TableRow key={atestado.id}>
+                          <TableCell className="text-black sticky left-0 z-10 bg-white">{atestado.fornecedor_nome}</TableCell>
+                          <TableCell className="text-gray-600">{atestado.nome_arquivo}</TableCell>
+                          <TableCell className="text-gray-600">{formatDate(atestado.criado_em)}</TableCell>
+                          <TableCell className="text-gray-600">{formatDate(atestado.validade)}</TableCell>
+                          <TableCell>
+                            <StatusBadge status={atestado.status} />
+                          </TableCell>
+                          <TableCell className="text-gray-600">{atestado.enviado_por ?? "-"}</TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => void handleViewAtestado(atestado)}>
+                                <Eye size={16} />
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => void handleDownloadAtestado(atestado)}>
+                                <Download size={16} />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openDeleteAtestadoDialog(atestado)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                          Nenhum atestado encontrado
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="riscos" className="space-y-4 mt-8">
+          <Card className="border border-gray-200">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5 md:col-span-1">
+                  <Label htmlFor="fornecedor-risco">Fornecedor</Label>
+                  <Select value={selectedRiskFornecedorId} onValueChange={setSelectedRiskFornecedorId}>
+                    <SelectTrigger id="fornecedor-risco">
+                      <SelectValue placeholder="Selecione o fornecedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fornecedores.map((fornecedor) => (
+                        <SelectItem key={fornecedor.id} value={fornecedor.id}>{fornecedor.razao_social}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Card className="border border-gray-200"><CardContent className="p-4"><p className="text-2xl text-black">{riscoSelecionado?.totalPenalidades ?? 0}</p><p className="text-sm text-gray-600">Penalidades Aplicadas</p></CardContent></Card>
+                <Card className="border border-gray-200"><CardContent className="p-4"><p className="text-2xl text-black">{riscoSelecionado?.totalDesistencias ?? 0}</p><p className="text-sm text-gray-600">Desistências Registradas</p></CardContent></Card>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="border border-gray-200"><CardContent className="p-4"><p className="text-2xl text-[#e7000b]">{riscoSelecionado?.penalidadesAtivas ?? 0}</p><p className="text-sm text-gray-600">Penalidades Ativas</p></CardContent></Card>
+            <Card className="border border-gray-200"><CardContent className="p-4"><p className="text-2xl text-black">{riscoSelecionado?.ultimaOcorrencia ?? "-"}</p><p className="text-sm text-gray-600">Última Ocorrência</p></CardContent></Card>
+          </div>
+
+          <Card className="border border-gray-200">
+            <CardHeader className="pt-3 pb-1">
+              <CardTitle className="text-xl text-black px-[0px] py-[8px]">Ocorrências do Fornecedor</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-[0px] pr-[16px] pb-[24px] pl-[16px]">
+              <div className="w-full overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[140px]">Tipo</TableHead>
+                      <TableHead className="min-w-[320px]">Descrição</TableHead>
+                      <TableHead className="min-w-[140px]">Data</TableHead>
+                      <TableHead className="min-w-[140px]">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {historicoRiscosFornecedor.length > 0 ? (
+                      historicoRiscosFornecedor.map((item, index) => (
+                        <TableRow key={`${item.tipo}-${index}`}>
+                          <TableCell className="text-black">{item.tipo}</TableCell>
+                          <TableCell className="text-gray-600">{item.descricao}</TableCell>
+                          <TableCell className="text-gray-600">{item.data}</TableCell>
+                          <TableCell><StatusBadge status={item.status as FornecedorStatus | AtestadoStatus} /></TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-gray-500 py-8">Nenhum risco registrado para este fornecedor.</TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>
@@ -739,20 +983,20 @@ function ContratosEFornecedores() {
       <Dialog open={isViewerOpen} onOpenChange={setIsViewerOpen}>
         <DialogContent className="max-w-6xl h-[90vh] p-0 gap-0">
           <DialogHeader className="sr-only">
-            <DialogTitle>Visualização de Atestado - {selectedAtestado?.arquivo}</DialogTitle>
+            <DialogTitle>Visualizacao de Atestado - {selectedAtestado?.nome_arquivo}</DialogTitle>
             <DialogDescription>
-              Visualizador de documento do atestado de {selectedAtestado?.fornecedor} para o processo {selectedAtestado?.processo}
+              Visualizador de documento do atestado de {selectedAtestado?.fornecedor_nome}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div className="flex-1 min-w-0 mr-4">
-                <h3 className="text-xl text-black">Visualização de Atestado</h3>
-                <p className="text-sm text-gray-600 mt-1 truncate">{selectedAtestado?.arquivo}</p>
+                <h3 className="text-xl text-black">Visualizacao de Atestado</h3>
+                <p className="text-sm text-gray-600 mt-1 truncate">{selectedAtestado?.nome_arquivo}</p>
               </div>
               <Button
                 variant="outline"
-                onClick={() => selectedAtestado && handleDownloadAtestado(selectedAtestado)}
+                onClick={() => selectedAtestado && void handleDownloadAtestado(selectedAtestado)}
                 className="flex-shrink-0"
               >
                 <Download size={16} className="mr-2" />
@@ -764,39 +1008,42 @@ function ContratosEFornecedores() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 mb-1">Fornecedor</p>
-                  <p className="text-sm text-black truncate">{selectedAtestado?.fornecedor}</p>
+                  <p className="text-sm text-black truncate">{selectedAtestado?.fornecedor_nome ?? "-"}</p>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-600 mb-1">Processo</p>
-                  <p className="text-sm text-black">{selectedAtestado?.processo}</p>
+                  <p className="text-xs text-gray-600 mb-1">Criado em</p>
+                  <p className="text-sm text-black">{formatDate(selectedAtestado?.criado_em)}</p>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-600 mb-1">Responsável</p>
-                  <p className="text-sm text-black truncate">{selectedAtestado?.responsavel}</p>
+                  <p className="text-xs text-gray-600 mb-1">Enviado por</p>
+                  <p className="text-sm text-black truncate">{selectedAtestado?.enviado_por ?? "-"}</p>
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-gray-600 mb-1">Validade</p>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm text-black whitespace-nowrap">{selectedAtestado?.validade}</p>
-                    {selectedAtestado?.status && (
-                      <StatusBadge status={selectedAtestado.status as 'Válido' | 'Vencido'} />
-                    )}
+                    <p className="text-sm text-black whitespace-nowrap">{formatDate(selectedAtestado?.validade)}</p>
+                    {selectedAtestado?.status && <StatusBadge status={selectedAtestado.status} />}
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="flex-1 p-6 bg-white overflow-hidden">
-              <div className="h-full flex items-center justify-center bg-gray-100 rounded-lg">
-                <div className="text-center">
-                  <FileText size={64} className="text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600 mb-2">Pré-visualização do documento</p>
-                  <p className="text-sm text-gray-500">{selectedAtestado?.arquivo}</p>
-                  <p className="text-xs text-gray-400 mt-4">
-                    (Visualizador de PDF/Imagem seria renderizado aqui)
-                  </p>
+              {selectedAtestado?.signed_url ? (
+                <iframe
+                  title={selectedAtestado.nome_arquivo}
+                  src={selectedAtestado.signed_url}
+                  className="w-full h-full rounded-lg border border-gray-200"
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center bg-gray-100 rounded-lg">
+                  <div className="text-center">
+                    <FileText size={64} className="text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 mb-2">Pre-visualizacao indisponivel</p>
+                    <p className="text-sm text-gray-500">{selectedAtestado?.nome_arquivo}</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </DialogContent>
@@ -809,21 +1056,46 @@ function ContratosEFornecedores() {
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>
-                  <span className="text-black">Fornecedor:</span> {confirmAction.fornecedor?.nome}
+                  <span className="text-black">Fornecedor:</span> {confirmAction.fornecedor?.razao_social}
                 </p>
-                <p className="text-gray-700">
-                  {getActionDescription()}
-                </p>
+                <p className="text-gray-700">{getActionDescription()}</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeConfirmDialog}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={executeAction}
-              className="bg-[#003366] hover:bg-[#002244] text-white"
-            >
+            <AlertDialogAction onClick={() => void executeAction()} className="bg-[#003366] hover:bg-[#002244] text-white">
               Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmDeleteAtestado.open} onOpenChange={closeDeleteAtestadoDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusao do atestado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  <span className="text-black">Arquivo:</span> {confirmDeleteAtestado.atestado?.nome_arquivo}
+                </p>
+                <p>
+                  <span className="text-black">Fornecedor:</span> {confirmDeleteAtestado.atestado?.fornecedor_nome}
+                </p>
+                <p className="text-gray-700">
+                  Esta acao remove permanentemente o arquivo do Storage e o registro do banco de dados.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={closeDeleteAtestadoDialog}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleDeleteAtestado()}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -834,83 +1106,89 @@ function ContratosEFornecedores() {
 
 interface CadastroFornecedorProps {
   onVoltar?: () => void;
+  onSuccess?: () => void;
 }
 
-function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
-  const [formData, setFormData] = useState({
-    razaoSocial: '',
-    nomeFantasia: '',
-    cnpj: '',
-    inscricaoEstadual: '',
-    categoria: '',
-    telefone: '',
-    email: '',
-    cep: '',
-    endereco: '',
-    numero: '',
-    complemento: '',
-    bairro: '',
-    cidade: '',
-    estado: '',
-    contatoNome: '',
-    contatoCargo: '',
-    contatoTelefone: '',
-    contatoEmail: '',
-    observacoes: ''
-  });
+function CadastroFornecedor({ onVoltar, onSuccess }: CadastroFornecedorProps) {
+  const { currentUser } = useAuth();
+  const [formData, setFormData] = useState(initialCadastroFornecedorFormData);
 
-  const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field: keyof CadastroFornecedorFormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const formatCNPJ = (value: string) => {
-    const numbers = value.replace(/\D/g, '');
-    if (numbers.length <= 14) {
-      return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-    }
-    return value;
+    const numbers = value.replace(/\D/g, "").slice(0, 14);
+
+    if (numbers.length <= 2) return numbers;
+    if (numbers.length <= 5) return numbers.replace(/(\d{2})(\d+)/, "$1.$2");
+    if (numbers.length <= 8) return numbers.replace(/(\d{2})(\d{3})(\d+)/, "$1.$2.$3");
+    if (numbers.length <= 12) return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d+)/, "$1.$2.$3/$4");
+
+    return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
   };
 
   const handleCNPJChange = (value: string) => {
-    const formatted = formatCNPJ(value);
-    handleChange('cnpj', formatted);
+    handleChange("cnpj", formatCNPJ(value));
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!formData.razaoSocial || !formData.cnpj || !formData.email || !formData.categoria) {
-      toast.error('Campos obrigatórios não preenchidos', {
-        description: 'Por favor, preencha todos os campos obrigatórios.'
+      toast.error("Campos obrigatorios nao preenchidos", {
+        description: "Por favor, preencha todos os campos obrigatorios.",
       });
       return;
     }
 
-    toast.success('Fornecedor cadastrado com sucesso!', {
-      description: `${formData.razaoSocial} foi adicionado ao sistema.`
-    });
+    if (!currentUser?.id) {
+      toast.error("Usuario nao autenticado", {
+        description: "Faca login novamente para cadastrar fornecedores.",
+      });
+      return;
+    }
 
-    setFormData({
-      razaoSocial: '',
-      nomeFantasia: '',
-      cnpj: '',
-      inscricaoEstadual: '',
-      categoria: '',
-      telefone: '',
-      email: '',
-      cep: '',
-      endereco: '',
-      numero: '',
-      complemento: '',
-      bairro: '',
-      cidade: '',
-      estado: '',
-      contatoNome: '',
-      contatoCargo: '',
-      contatoTelefone: '',
-      contatoEmail: '',
-      observacoes: ''
-    });
+    const enderecoCompleto = [
+      formData.endereco,
+      formData.numero,
+      formData.complemento,
+      formData.bairro,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    const loadingToastId = toast.loading("Salvando fornecedor...");
+
+    try {
+      await createFornecedor({
+        razao_social: formData.razaoSocial,
+        cnpj: formData.cnpj,
+        categoria: formData.categoria || null,
+        email: formData.email || null,
+        telefone: formData.telefone || formData.contatoTelefone || null,
+        endereco: enderecoCompleto || null,
+        cidade: formData.cidade || null,
+        uf: formData.estado || null,
+        cep: formData.cep || null,
+        criado_por: currentUser.id,
+        status: "Ativo",
+      });
+
+      toast.success("Fornecedor cadastrado com sucesso!", {
+        id: loadingToastId,
+        description: `${formData.razaoSocial} foi adicionado ao sistema.`,
+      });
+
+      setFormData(initialCadastroFornecedorFormData);
+      onSuccess?.();
+      onVoltar?.();
+    } catch (error) {
+      toast.error("Erro ao cadastrar fornecedor", {
+        id: loadingToastId,
+        description: error instanceof Error ? error.message : "Nao foi possivel cadastrar o fornecedor.",
+      });
+    }
   };
 
   return (
@@ -923,11 +1201,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
             <span className="text-black">Novo Cadastro</span>
           </div>
           {onVoltar && (
-            <Button
-              onClick={onVoltar}
-              variant="outline"
-              className="border-gray-300 hover:bg-gray-50"
-            >
+            <Button onClick={onVoltar} variant="outline" className="border-gray-300 hover:bg-gray-50">
               <ArrowLeft className="mr-2" size={18} />
               Voltar
             </Button>
@@ -936,20 +1210,19 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
 
         <div>
           <h1 className="text-black">Cadastro de Fornecedor</h1>
-          <p className="text-gray-600 mt-1">
-            Preencha os dados do fornecedor para cadastrá-lo no sistema
-          </p>
+          <p className="text-gray-600 mt-1">Preencha os dados do fornecedor para cadastra-lo no sistema</p>
         </div>
       </div>
 
       <div className="px-8 py-6">
         <form onSubmit={handleSubmit}>
           <div className="max-w-4xl space-y-6">
-
-            <Alert className="border-blue-200 bg-blue-50">
-              <AlertCircle className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-800 text-sm">
-                Campos marcados com <span className="text-red-600">*</span> são obrigatórios
+            <Alert className="border-blue-200 bg-blue-50 flex items-center justify-start text-left gap-2 p-4">
+              <AlertCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />
+              <AlertDescription className="text-blue-800 text-sm m-0">
+                <p className="inline-block">
+                  Campos marcados com <span className="text-red-600 font-bold px-1">*</span> são obrigatórios.
+                </p>
               </AlertDescription>
             </Alert>
 
@@ -964,13 +1237,13 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="razaoSocial" className="text-sm text-gray-700 mb-2 block">
-                      Razão Social <span className="text-red-600">*</span>
+                      Razao Social <span className="text-red-600">*</span>
                     </Label>
                     <Input
                       id="razaoSocial"
                       value={formData.razaoSocial}
-                      onChange={(e) => handleChange('razaoSocial', e.target.value)}
-                      placeholder="Digite a razão social"
+                      onChange={(e) => handleChange("razaoSocial", e.target.value)}
+                      placeholder="Digite a razao social"
                       required
                     />
                   </div>
@@ -982,7 +1255,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="nomeFantasia"
                       value={formData.nomeFantasia}
-                      onChange={(e) => handleChange('nomeFantasia', e.target.value)}
+                      onChange={(e) => handleChange("nomeFantasia", e.target.value)}
                       placeholder="Digite o nome fantasia"
                     />
                   </div>
@@ -1003,13 +1276,13 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
 
                   <div>
                     <Label htmlFor="inscricaoEstadual" className="text-sm text-gray-700 mb-2 block">
-                      Inscrição Estadual
+                      Inscricao Estadual
                     </Label>
                     <Input
                       id="inscricaoEstadual"
                       value={formData.inscricaoEstadual}
-                      onChange={(e) => handleChange('inscricaoEstadual', e.target.value)}
-                      placeholder="Digite a inscrição estadual"
+                      onChange={(e) => handleChange("inscricaoEstadual", e.target.value)}
+                      placeholder="Digite a inscricao estadual"
                     />
                   </div>
 
@@ -1017,17 +1290,17 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Label htmlFor="categoria" className="text-sm text-gray-700 mb-2 block">
                       Categoria <span className="text-red-600">*</span>
                     </Label>
-                    <Select value={formData.categoria} onValueChange={(value) => handleChange('categoria', value)}>
+                    <Select value={formData.categoria} onValueChange={(value) => handleChange("categoria", value)}>
                       <SelectTrigger id="categoria">
                         <SelectValue placeholder="Selecione a categoria" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="material-escritorio">Material de Escritório</SelectItem>
-                        <SelectItem value="informatica">Informática</SelectItem>
+                        <SelectItem value="material-escritorio">Material de Escritorio</SelectItem>
+                        <SelectItem value="informatica">Informatica</SelectItem>
                         <SelectItem value="limpeza">Limpeza</SelectItem>
-                        <SelectItem value="construcao">Construção</SelectItem>
-                        <SelectItem value="servicos">Serviços</SelectItem>
-                        <SelectItem value="mobiliario">Mobiliário</SelectItem>
+                        <SelectItem value="construcao">Construcao</SelectItem>
+                        <SelectItem value="servicos">Servicos</SelectItem>
+                        <SelectItem value="mobiliario">Mobiliario</SelectItem>
                         <SelectItem value="outros">Outros</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1040,7 +1313,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="telefone"
                       value={formData.telefone}
-                      onChange={(e) => handleChange('telefone', e.target.value)}
+                      onChange={(e) => handleChange("telefone", e.target.value)}
                       placeholder="(00) 0000-0000"
                     />
                   </div>
@@ -1053,7 +1326,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) => handleChange('email', e.target.value)}
+                      onChange={(e) => handleChange("email", e.target.value)}
                       placeholder="email@empresa.com.br"
                       required
                     />
@@ -1064,7 +1337,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
 
             <Card className="border border-gray-200">
               <CardHeader className="bg-gray-50 border-b border-gray-200">
-                <CardTitle className="font-normal text-[16px] py-[8px]">Endereço</CardTitle>
+                <CardTitle className="font-normal text-[16px] py-[8px]">Endereco</CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1075,7 +1348,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="cep"
                       value={formData.cep}
-                      onChange={(e) => handleChange('cep', e.target.value)}
+                      onChange={(e) => handleChange("cep", e.target.value)}
                       placeholder="00000-000"
                       maxLength={9}
                     />
@@ -1083,25 +1356,25 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
 
                   <div className="md:col-span-2">
                     <Label htmlFor="endereco" className="text-sm text-gray-700 mb-2 block">
-                      Endereço
+                      Endereco
                     </Label>
                     <Input
                       id="endereco"
                       value={formData.endereco}
-                      onChange={(e) => handleChange('endereco', e.target.value)}
+                      onChange={(e) => handleChange("endereco", e.target.value)}
                       placeholder="Rua, Avenida, etc."
                     />
                   </div>
 
                   <div>
                     <Label htmlFor="numero" className="text-sm text-gray-700 mb-2 block">
-                      Número
+                      Numero
                     </Label>
                     <Input
                       id="numero"
                       value={formData.numero}
-                      onChange={(e) => handleChange('numero', e.target.value)}
-                      placeholder="Nº"
+                      onChange={(e) => handleChange("numero", e.target.value)}
+                      placeholder="No"
                     />
                   </div>
 
@@ -1112,7 +1385,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="complemento"
                       value={formData.complemento}
-                      onChange={(e) => handleChange('complemento', e.target.value)}
+                      onChange={(e) => handleChange("complemento", e.target.value)}
                       placeholder="Sala, Andar, etc."
                     />
                   </div>
@@ -1124,7 +1397,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="bairro"
                       value={formData.bairro}
-                      onChange={(e) => handleChange('bairro', e.target.value)}
+                      onChange={(e) => handleChange("bairro", e.target.value)}
                       placeholder="Bairro"
                     />
                   </div>
@@ -1136,7 +1409,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="cidade"
                       value={formData.cidade}
-                      onChange={(e) => handleChange('cidade', e.target.value)}
+                      onChange={(e) => handleChange("cidade", e.target.value)}
                       placeholder="Cidade"
                     />
                   </div>
@@ -1145,7 +1418,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Label htmlFor="estado" className="text-sm text-gray-700 mb-2 block">
                       Estado
                     </Label>
-                    <Select value={formData.estado} onValueChange={(value) => handleChange('estado', value)}>
+                    <Select value={formData.estado} onValueChange={(value) => handleChange("estado", value)}>
                       <SelectTrigger id="estado">
                         <SelectValue placeholder="UF" />
                       </SelectTrigger>
@@ -1174,7 +1447,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="contatoNome"
                       value={formData.contatoNome}
-                      onChange={(e) => handleChange('contatoNome', e.target.value)}
+                      onChange={(e) => handleChange("contatoNome", e.target.value)}
                       placeholder="Nome completo"
                     />
                   </div>
@@ -1186,7 +1459,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="contatoCargo"
                       value={formData.contatoCargo}
-                      onChange={(e) => handleChange('contatoCargo', e.target.value)}
+                      onChange={(e) => handleChange("contatoCargo", e.target.value)}
                       placeholder="Cargo do contato"
                     />
                   </div>
@@ -1198,7 +1471,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                     <Input
                       id="contatoTelefone"
                       value={formData.contatoTelefone}
-                      onChange={(e) => handleChange('contatoTelefone', e.target.value)}
+                      onChange={(e) => handleChange("contatoTelefone", e.target.value)}
                       placeholder="(00) 00000-0000"
                     />
                   </div>
@@ -1211,7 +1484,7 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
                       id="contatoEmail"
                       type="email"
                       value={formData.contatoEmail}
-                      onChange={(e) => handleChange('contatoEmail', e.target.value)}
+                      onChange={(e) => handleChange("contatoEmail", e.target.value)}
                       placeholder="contato@empresa.com.br"
                     />
                   </div>
@@ -1221,14 +1494,14 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
 
             <Card className="border border-gray-200">
               <CardHeader className="bg-gray-50 border-b border-gray-200">
-                <CardTitle className="font-normal text-[16px] py-[8px]">Observações</CardTitle>
+                <CardTitle className="font-normal text-[16px] py-[8px]">Observacoes</CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <Textarea
                   id="observacoes"
                   value={formData.observacoes}
-                  onChange={(e) => handleChange('observacoes', e.target.value)}
-                  placeholder="Informações adicionais sobre o fornecedor..."
+                  onChange={(e) => handleChange("observacoes", e.target.value)}
+                  placeholder="Informacoes adicionais sobre o fornecedor..."
                   rows={4}
                   className="resize-none"
                 />
@@ -1237,19 +1510,11 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
 
             <div className="flex gap-3 justify-end pt-4">
               {onVoltar && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-gray-300 hover:bg-gray-50"
-                  onClick={onVoltar}
-                >
+                <Button type="button" variant="outline" className="border-gray-300 hover:bg-gray-50" onClick={onVoltar}>
                   Cancelar
                 </Button>
               )}
-              <Button
-                type="submit"
-                className="bg-[#003366] hover:bg-[#002244] text-white"
-              >
+              <Button type="submit" className="bg-[#003366] hover:bg-[#002244] text-white">
                 <Save size={18} className="mr-2" />
                 Salvar Fornecedor
               </Button>
@@ -1263,19 +1528,30 @@ function CadastroFornecedor({ onVoltar }: CadastroFornecedorProps) {
 
 export function FornecedoresModule() {
   const [activePageTab, setActivePageTab] = useState<"fornecedores-atestados" | "cadastro-fornecedor">("fornecedores-atestados");
+  const [refreshToken, setRefreshToken] = useState(0);
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <Tabs value={activePageTab} onValueChange={(value) => setActivePageTab(value as "fornecedores-atestados" | "cadastro-fornecedor")} className="w-full">
+      <Tabs
+        value={activePageTab}
+        onValueChange={(value) => setActivePageTab(value as "fornecedores-atestados" | "cadastro-fornecedor")}
+        className="w-full"
+      >
         <TabsList className="grid w-full max-w-[560px] grid-cols-2">
           <TabsTrigger value="fornecedores-atestados">Fornecedores e Atestados</TabsTrigger>
           <TabsTrigger value="cadastro-fornecedor">Cadastro de Fornecedor</TabsTrigger>
         </TabsList>
         <TabsContent value="fornecedores-atestados" className="mt-4">
-          <ContratosEFornecedores />
+          <ContratosEFornecedores
+            refreshToken={refreshToken}
+            onCadastrarNovo={() => setActivePageTab("cadastro-fornecedor")}
+          />
         </TabsContent>
         <TabsContent value="cadastro-fornecedor" className="mt-4">
-          <CadastroFornecedor onVoltar={() => setActivePageTab("fornecedores-atestados")} />
+          <CadastroFornecedor
+            onVoltar={() => setActivePageTab("fornecedores-atestados")}
+            onSuccess={() => setRefreshToken((value) => value + 1)}
+          />
         </TabsContent>
       </Tabs>
     </div>
