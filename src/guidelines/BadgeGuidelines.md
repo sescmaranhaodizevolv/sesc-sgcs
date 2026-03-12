@@ -1,7 +1,7 @@
-# Guidelines de Badges - Sistema SGCS
+# Guidelines de Badges - Sistema ACompra
 
 ## Visão Geral
-Este documento define as regras e padrões para uso de badges (chips/etiquetas de status) no Sistema de Gestão de Contratos e Suprimentos (SGCS), garantindo consistência visual e semântica em todo o protótipo.
+Este documento define as regras e padrões para uso de badges (chips/etiquetas de status) no ACompra, garantindo consistência visual e semântica em todo o protótipo.
 
 ---
 

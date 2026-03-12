@@ -1,6 +1,6 @@
 # Guia de Homologação - Fase 5
 
-Este roteiro foi preparado para validar a entrega completa da Fase 5 do GCON: consolidação de contratos, gestão de TRP, prorrogações, realinhamentos e alertas da Gestora.
+Este roteiro foi preparado para validar a entrega completa da Fase 5 do ACompra: consolidação de contratos, gestão de TRP, prorrogações, realinhamentos e alertas da Gestora.
 
 ## Páginas
 

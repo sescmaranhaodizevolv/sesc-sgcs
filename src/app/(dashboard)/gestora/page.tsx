@@ -24,7 +24,7 @@ function formatDateLabel(value: string | null | undefined) {
   return date.toLocaleDateString("pt-BR");
 }
 
-function formatReadableCode(primary?: string | null, fallback?: string | null, prefix = "GCON") {
+function formatReadableCode(primary?: string | null, fallback?: string | null, prefix = "ACompra") {
   if (primary && primary.trim()) return primary;
   if (!fallback || !fallback.trim()) return "-";
   if (/^\d+$/.test(fallback.trim())) return `${prefix}-${fallback.padStart(4, "0")}`;

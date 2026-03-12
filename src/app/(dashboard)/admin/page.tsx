@@ -48,6 +48,12 @@ function formatDateLabel(value: string | null | undefined) {
     return date.toLocaleDateString("pt-BR");
 }
 
+function formatModalidadeLabel(modalidade: string | null | undefined) {
+    if (!modalidade) return "-";
+
+    return modalidade === "Pregão Eletrônico" ? "Pesquisa de Preços" : modalidade;
+}
+
 function mapProcessoDetalhadoParaDashboard(processo: ProcessoComDetalhes): Processo {
     return {
         id: processo.id,
@@ -303,7 +309,7 @@ export default function AdminDashboardPage() {
 
         return Object.entries(leadTimePorModalidade)
             .map(([modalidade, dados]) => ({
-                modalidade,
+                modalidade: formatModalidadeLabel(modalidade),
                 media: Math.round(dados.total / dados.count),
             }))
             .sort((a, b) => a.media - b.media);
@@ -387,14 +393,14 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <DashboardCard title="Lead Time Médio" value={hasProcessosDiretos ? `${metricasDiretas.medio} dias` : "N/A"} subtitle={`Baseado em ${processosDiretos.length} processos`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
+                <DashboardCard title="Lead Time Médio" value={hasProcessosDiretos ? `${metricasDiretas.medio} dias` : "N/A"} subtitle={`Tempo médio total com base em ${processosDiretos.length} processos`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
                 <div className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={() => setSelectedProcess(metricasDiretas.procMaisRapido)}>
                     <DashboardCard title="Processo Mais Rápido" value={hasProcessosDiretos ? `${metricasDiretas.maisRapido} dias` : "N/A"} subtitle="Melhor desempenho" icon={<TrendingDown size={20} className="text-white" />} iconBg="bg-[#00bc7d]" />
                 </div>
                 <div className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={() => setSelectedProcess(metricasDiretas.procMaisLento)}>
                     <DashboardCard title="Processo Mais Lento" value={hasProcessosDiretos ? `${metricasDiretas.maisLento} dias` : "N/A"} subtitle="Requer atenção" icon={<TrendingUp size={20} className="text-white" />} iconBg="bg-[#ff6900]" />
                 </div>
-                <DashboardCard title="Variação" value={hasProcessosDiretos ? `${Math.max(metricasDiretas.maisLento - metricasDiretas.maisRapido, 0)} dias` : "N/A"} subtitle="Amplitude de tempo" icon={<Clock size={20} className="text-white" />} iconBg="bg-[#2b7fff]" />
+                <DashboardCard title="Variação" value={hasProcessosDiretos ? `${Math.max(metricasDiretas.maisLento - metricasDiretas.maisRapido, 0)} dias` : "N/A"} subtitle="Estabilidade entre o processo mais rápido e o mais lento" icon={<Clock size={20} className="text-white" />} iconBg="bg-[#2b7fff]" />
             </div>
 
             <div>
@@ -408,7 +414,7 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <DashboardCard title="Lead Time Médio" value={hasLicitacao ? `${leadTimeMedioLicitacao} dias` : "N/A"} subtitle={`Baseado em ${processosLicitacao.length} licitações`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
+                <DashboardCard title="Lead Time Médio" value={hasLicitacao ? `${leadTimeMedioLicitacao} dias` : "N/A"} subtitle={`Tempo médio total com base em ${processosLicitacao.length} licitações`} icon={<Timer size={20} className="text-white" />} iconBg="bg-sesc-blue" />
                 <div
                     className={`transition-transform ${hasLicitacao && procMaisRapidoLic ? "cursor-pointer hover:scale-[1.02]" : "cursor-not-allowed opacity-80"}`}
                     onClick={() => {

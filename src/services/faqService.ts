@@ -39,6 +39,34 @@ export async function getFaqs(): Promise<FaqItem[]> {
   return (data ?? []) as FaqItem[];
 }
 
+export async function getFaqCategories(): Promise<string[]> {
+  const faqs = await getFaqs();
+
+  return Array.from(new Set(faqs.map((faq) => faq.categoria).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b, "pt-BR")
+  );
+}
+
+export async function getQuestionsByCategory(categoria: string): Promise<FaqItem[]> {
+  const normalized = categoria.trim();
+  if (!normalized) return [];
+
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("faq")
+    .select("*")
+    .eq("ativo", true)
+    .eq("categoria", normalized)
+    .order("pergunta", { ascending: true });
+
+  if (error) {
+    throw new Error(getErrorMessage(error));
+  }
+
+  return (data ?? []) as FaqItem[];
+}
+
 export async function buscarFaqPorTermo(termo: string): Promise<FaqItem[]> {
   const normalized = termo.trim().toLowerCase();
   if (!normalized) return [];
@@ -46,15 +74,12 @@ export async function buscarFaqPorTermo(termo: string): Promise<FaqItem[]> {
   const supabase = createClient();
   const termos = normalized.split(/\s+/).filter(Boolean);
 
-  let query = supabase
+  const { data, error } = await supabase
     .from("faq")
     .select("*")
     .eq("ativo", true)
-    .or(`pergunta.ilike.%${normalized}%,resposta.ilike.%${normalized}%`)
     .order("categoria", { ascending: true })
-    .limit(20);
-
-  const { data, error } = await query;
+    .limit(50);
 
   if (error) {
     throw new Error(getErrorMessage(error));
@@ -62,15 +87,26 @@ export async function buscarFaqPorTermo(termo: string): Promise<FaqItem[]> {
 
   const faqs = (data ?? []) as FaqItem[];
 
-  return faqs.filter((faq) => {
-    const pergunta = faq.pergunta.toLowerCase();
-    const resposta = faq.resposta.toLowerCase();
-    const palavrasChave = faq.palavras_chave.map((item) => item.toLowerCase());
+  const resultados = faqs
+    .map((faq) => {
+      const pergunta = faq.pergunta.toLowerCase();
+      const resposta = faq.resposta.toLowerCase();
+      const palavrasChave = faq.palavras_chave.map((item) => item.toLowerCase());
 
-    return termos.some(
-      (item) => pergunta.includes(item) || resposta.includes(item) || palavrasChave.some((keyword) => keyword.includes(item) || item.includes(keyword))
-    );
-  });
+      const score = termos.reduce((acc, item) => {
+        if (palavrasChave.includes(item)) return acc + 120;
+        if (palavrasChave.some((keyword) => keyword.includes(item) || item.includes(keyword))) return acc + 90;
+        if (pergunta.includes(item)) return acc + 60;
+        if (resposta.includes(item)) return acc + 20;
+        return acc;
+      }, 0);
+
+      return { faq, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.faq.pergunta.localeCompare(b.faq.pergunta, "pt-BR"));
+
+  return resultados.map((item) => item.faq);
 }
 
 export async function createFaq(payload: FaqPayload): Promise<FaqItem> {

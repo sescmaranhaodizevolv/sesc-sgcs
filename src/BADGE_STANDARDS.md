@@ -1,4 +1,4 @@
-# Padrão de Badges do Sistema SGCS
+# Padrão de Badges do Sistema ACompra
 
 ## Objetivo
 Garantir identificação visual rápida através de cores e pesos consistentes, permitindo que o usuário **"bata o olho e saiba do que se trata"**.

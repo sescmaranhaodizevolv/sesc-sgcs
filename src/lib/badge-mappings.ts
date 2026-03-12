@@ -21,6 +21,7 @@ export const statusProcessoMapping: Record<string, BadgeMapping> = {
   // Info - Estados em andamento/neutros
   "RC recebida": { intent: "info", weight: "light" },
   "RC recebida pelo setor de compras": { intent: "info", weight: "light" },
+  "Aguardando Atribuição": { intent: "warning", weight: "medium" },
   "Aguardando atribuição": { intent: "warning", weight: "medium" },
   "Análise de RC": { intent: "info", weight: "medium" },
   "Em cotação": { intent: "purple", weight: "medium" },

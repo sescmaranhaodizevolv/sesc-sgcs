@@ -7,9 +7,9 @@ import { Toaster } from "sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-    title: "SGCS - Sistema de Gestão de Contratos e Suprimentos | SESC Maranhão",
+    title: "ACompra - Gestão de Compras SESC",
     description:
-        "Sistema de Gestão de Contratos e Suprimentos do SESC Maranhão. Controle de processos de compras, fornecedores, penalidades e prorrogações.",
+        "ACompra, plataforma de gestão de compras do SESC Maranhão. Controle de processos de compras, fornecedores, penalidades e prorrogações.",
 };
 
 export default function RootLayout({

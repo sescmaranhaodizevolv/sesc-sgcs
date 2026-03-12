@@ -1,5 +1,5 @@
 /**
- * Dados Mock do Sistema SGCS
+ * Dados Mock do Sistema ACompra
  * Tipados com as interfaces de @/types
  */
 import type {

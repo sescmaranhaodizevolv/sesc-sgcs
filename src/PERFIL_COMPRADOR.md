@@ -1,4 +1,4 @@
-# Jornada do Perfil Comprador/Responsável - SGCS
+# Jornada do Perfil Comprador/Responsável - ACompra
 
 ## ✅ Status da Implementação
 **Status:** Implementado e funcional  
@@ -8,7 +8,7 @@
 
 ## 📋 Visão Geral
 
-Este documento detalha a implementação completa da jornada do perfil **Comprador/Responsável** no Sistema de Gestão de Contratos e Suprimentos (SGCS), conforme especificado no **PRD 002** (Seções 3.1 e 3.2).
+Este documento detalha a implementação completa da jornada do perfil **Comprador/Responsável** no ACompra, conforme especificado no **PRD 002** (Seções 3.1 e 3.2).
 
 O perfil Comprador foi desenvolvido para atender analistas e membros da equipe de Compras do SESC Maranhão, permitindo o registro e acompanhamento de processos de aquisição em tempo real, substituindo o controle manual em planilhas Excel.
 

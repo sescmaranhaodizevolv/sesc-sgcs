@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, Calendar, Download, FileText, Filter, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,7 +48,7 @@ export function AuditoriaModule({ perfil }: AuditoriaModuleProps) {
 
   const isAdmin = currentProfile === "admin" || perfil === "admin";
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     if (!isAdmin) {
       setLogs([]);
       setIsLoading(false);
@@ -69,11 +69,11 @@ export function AuditoriaModule({ perfil }: AuditoriaModuleProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [actionFilter, isAdmin, tableFilter]);
 
   useEffect(() => {
     void loadLogs();
-  }, [isAdmin, tableFilter, actionFilter]);
+  }, [loadLogs]);
 
   const filteredLogs = useMemo(
     () =>
@@ -188,6 +188,8 @@ export function AuditoriaModule({ perfil }: AuditoriaModuleProps) {
                   <SortableTableHead label="Ação" onClick={() => sortLogs("acao")} currentDirection={configLogs?.key === "acao" ? configLogs.direction : null} className="min-w-[140px] text-white" />
                   <SortableTableHead label="Tabela" onClick={() => sortLogs("tabela")} currentDirection={configLogs?.key === "tabela" ? configLogs.direction : null} className="min-w-[180px] text-white" />
                   <SortableTableHead label="Registro" onClick={() => sortLogs("registro_id")} currentDirection={configLogs?.key === "registro_id" ? configLogs.direction : null} className="min-w-[220px] text-white" />
+                  <TableHead className="min-w-[180px] text-white">Usuário</TableHead>
+                  <TableHead className="min-w-[160px] text-white">IP</TableHead>
                   <SortableTableHead label="Data/Hora" onClick={() => sortLogs("criado_em")} currentDirection={configLogs?.key === "criado_em" ? configLogs.direction : null} className="min-w-[180px] text-white" />
                   <TableHead className="min-w-[120px] text-white">Detalhes</TableHead>
                 </TableRow>
@@ -204,6 +206,8 @@ export function AuditoriaModule({ perfil }: AuditoriaModuleProps) {
                       </TableCell>
                       <TableCell className="text-black">{log.tabela}</TableCell>
                       <TableCell className="text-gray-600">{log.registro_id || "-"}</TableCell>
+                      <TableCell className="text-gray-600">{log.usuario?.nome || log.usuario?.email || log.usuario_id || "Sistema"}</TableCell>
+                      <TableCell className="text-gray-600 whitespace-nowrap">{log.ip || "-"}</TableCell>
                       <TableCell className="text-gray-600 whitespace-nowrap">{formatDate(log.criado_em)}</TableCell>
                       <TableCell>
                         <Button size="sm" variant="outline" onClick={() => setSelectedLog(log)}>
@@ -215,7 +219,7 @@ export function AuditoriaModule({ perfil }: AuditoriaModuleProps) {
                 })}
                 {!isLoading && sortedLogs.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">
                       Nenhum log encontrado para os filtros selecionados.
                     </TableCell>
                   </TableRow>
@@ -237,10 +241,12 @@ export function AuditoriaModule({ perfil }: AuditoriaModuleProps) {
 
           {selectedLog && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-6">
                 <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Ação</p><p className="text-black mt-1">{selectedLog.acao}</p></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Tabela</p><p className="text-black mt-1">{selectedLog.tabela}</p></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Registro</p><p className="text-black mt-1 break-all">{selectedLog.registro_id || "-"}</p></CardContent></Card>
+                <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Usuário</p><p className="text-black mt-1">{selectedLog.usuario?.nome || selectedLog.usuario?.email || selectedLog.usuario_id || "Sistema"}</p></CardContent></Card>
+                <Card><CardContent className="p-4"><p className="text-sm text-gray-600">IP</p><p className="text-black mt-1">{selectedLog.ip || "-"}</p></CardContent></Card>
                 <Card><CardContent className="p-4"><p className="text-sm text-gray-600">Data</p><p className="text-black mt-1">{formatDate(selectedLog.criado_em)}</p></CardContent></Card>
               </div>
 

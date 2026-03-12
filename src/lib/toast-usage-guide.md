@@ -1,4 +1,4 @@
-# Guia de Uso - Sistema de Toasts SGCS
+# Guia de Uso - Sistema de Toasts ACompra
 
 ## Importação
 

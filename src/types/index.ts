@@ -1,5 +1,5 @@
 // ============================================================
-// SESC SGCS - Data Schema (Tipagem estrita, sem 'any')
+// SESC ACompra - Data Schema (Tipagem estrita, sem 'any')
 // Interfaces derivadas do PRD e do protótipo Figma Make
 // ============================================================
 
@@ -77,7 +77,7 @@ export interface BadgeMapping {
 // Entidades do domínio
 // ============================================================
 
-/** Usuário do sistema SGCS */
+/** Usuário do sistema ACompra */
 export interface Usuario {
     id: string;
     nome: string;
@@ -93,9 +93,11 @@ export interface Usuario {
 export interface Processo {
     id: string;
     descricao: string;
+    numeroProcesso?: string;
     numeroRequisicao?: string;
     requisitante?: string;
     objeto?: string;
+    categoria?: string | null;
     modalidade: string;
     empresa: string;
     empresaVencedora?: string;
@@ -116,6 +118,7 @@ export interface Processo {
     leadTime?: number;
     /** ID da devolução ao admin (quando aplicável) */
     justificativaDevolucao?: string;
+    numero_processo?: string | null;
     numero_requisicao?: string | null;
     responsavel_id?: string | null;
     requisitante_id?: string | null;
@@ -128,6 +131,7 @@ export interface Processo {
     data_distribuicao?: string | null;
     data_recebimento?: string | null;
     data_finalizacao?: string | null;
+    data_entrega?: string | null;
     data_inicio?: string | null;
     data_fim?: string | null;
     criado_em?: string;

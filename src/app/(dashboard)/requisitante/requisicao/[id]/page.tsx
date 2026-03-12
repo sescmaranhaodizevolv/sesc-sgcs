@@ -4,6 +4,7 @@
  * Requisitante - Detalhe da Requisição com StatusTimeline
  * Somente leitura, sem dados financeiros / observações internas (RN-VIS)
  */
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Calendar, User, Building } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,8 +12,10 @@ import { Button } from "@/components/ui/button";
 import { BadgeStatus } from "@/components/ui/badge-status";
 import { StatusTimeline } from "@/components/features/StatusTimeline";
 import { getBadgeMappingForStatus } from "@/lib/badge-mappings";
-import { requisicoesCompra } from "@/lib/dados-sistema";
-import type { EtapaTimeline } from "@/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { createClient } from "@/lib/supabase/client";
+import { getProcessos, getProcessoTimeline } from "@/services/processosService";
+import type { EtapaTimeline, ProcessoComDetalhes } from "@/types";
 
 function getTimelineEtapas(
     statusRequisicao: string,
@@ -149,14 +152,135 @@ function getTimelineEtapas(
     });
 }
 
+function normalizeRequisicaoStatus(status?: string | null) {
+    const normalized = (status || "").trim().toLowerCase();
+
+    if (!normalized || normalized === "rc recebida pelo setor de compras" || normalized === "rc recebida") {
+        return "Aguardando Atribuição";
+    }
+
+    if (["ativo", "finalizado", "concluído", "concluido", "homologado", "contrato ativo"].includes(normalized)) {
+        return "Finalizado";
+    }
+
+    if (normalized === "devolvido ao requisitante" || normalized === "rc devolvida para ajuste") {
+        return "Devolvido ao Requisitante";
+    }
+
+    if (normalized === "em análise" || normalized === "em analise") {
+        return "Em Análise";
+    }
+
+    return status || "Aguardando Atribuição";
+}
+
 export default function DetalheRequisicaoPage() {
     const params = useParams();
     const router = useRouter();
+    const { currentUser } = useAuth();
+    const supabase = useMemo(() => createClient(), []);
     const rcId = params.id as string;
+    const [requisicao, setRequisicao] = useState<ProcessoComDetalhes | null>(null);
+    const [timelineEtapas, setTimelineEtapas] = useState<EtapaTimeline[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasAccessDenied, setHasAccessDenied] = useState(false);
 
-    const requisicao = requisicoesCompra.find((r) => r.id === rcId);
+    useEffect(() => {
+        const loadRequisicao = async () => {
+            if (!currentUser?.id || !rcId) {
+                setIsLoading(false);
+                return;
+            }
+
+            setIsLoading(true);
+
+            try {
+                setHasAccessDenied(false);
+                const processos = (await getProcessos()).find(
+                    (item) => item.id === rcId || item.numero_requisicao === rcId
+                );
+
+                if (!processos) {
+                    setRequisicao(null);
+                    setTimelineEtapas([]);
+                    return;
+                }
+
+                if (processos.requisitante_id !== currentUser.id) {
+                    setHasAccessDenied(true);
+                    setRequisicao(null);
+                    setTimelineEtapas([]);
+                    return;
+                }
+
+                setRequisicao(processos);
+
+                const timeline = await getProcessoTimeline(processos.id);
+                if (timeline.length > 0) {
+                    setTimelineEtapas(
+                        timeline
+                            .slice()
+                            .reverse()
+                            .map((item, index, array) => ({
+                                titulo: item.titulo || item.status || "Atualização",
+                                responsavel: item.responsavel?.nome || "Sistema",
+                                data: new Date(item.criado_em).toLocaleString("pt-BR"),
+                                status: index === array.length - 1 ? "em-andamento" : "concluido",
+                                mensagem: item.mensagem || item.descricao || undefined,
+                            }))
+                    );
+                } else {
+                    setTimelineEtapas(
+                        getTimelineEtapas(
+                            normalizeRequisicaoStatus(processos.status),
+                            normalizeRequisicaoStatus(processos.status) === "Devolvido ao Requisitante",
+                            processos.responsavel?.nome || "Aguardando atribuição"
+                        )
+                    );
+                }
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        void loadRequisicao();
+
+        if (!currentUser?.id || !rcId) return;
+
+        const channel = supabase
+            .channel(`requisitante-detalhe-${rcId}`)
+            .on("postgres_changes", { event: "*", schema: "public", table: "processos" }, () => {
+                void loadRequisicao();
+            })
+            .on("postgres_changes", { event: "*", schema: "public", table: "processo_timeline" }, () => {
+                void loadRequisicao();
+            })
+            .subscribe();
+
+        return () => {
+            void supabase.removeChannel(channel);
+        };
+    }, [currentUser?.id, rcId, supabase]);
+
+    if (isLoading) {
+        return <div className="p-6 text-sm text-gray-600">Carregando requisição...</div>;
+    }
 
     if (!requisicao) {
+        if (hasAccessDenied) {
+            return (
+                <div className="p-6">
+                    <Button variant="outline" onClick={() => router.push("/requisitante")}>
+                        <ArrowLeft size={16} className="mr-2" /> Voltar
+                    </Button>
+                    <div className="mt-8 text-center">
+                        <p className="text-lg text-gray-900">Acesso negado.</p>
+                        <p className="mt-2 text-sm text-gray-600">Esta requisição não pertence ao usuário autenticado.</p>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="p-6">
                 <Button variant="outline" onClick={() => router.back()}>
@@ -169,15 +293,9 @@ export default function DetalheRequisicaoPage() {
         );
     }
 
-    const statusMapping = getBadgeMappingForStatus(requisicao.status);
-    const isDevolvida =
-        requisicao.status === "RC devolvida para ajuste" ||
-        requisicao.status === "Devolvido ao Requisitante";
-    const timelineEtapas = getTimelineEtapas(
-        requisicao.status,
-        isDevolvida,
-        requisicao.responsavelAtual
-    );
+    const statusVisivel = normalizeRequisicaoStatus(requisicao.status);
+    const statusMapping = getBadgeMappingForStatus(statusVisivel);
+    const isDevolvida = statusVisivel === "Devolvido ao Requisitante";
 
     return (
         <div className="p-6 space-y-6">
@@ -190,10 +308,10 @@ export default function DetalheRequisicaoPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
-                        <h2 className="text-3xl text-black">{requisicao.id}</h2>
-                        <BadgeStatus {...statusMapping}>{requisicao.status}</BadgeStatus>
+                        <h2 className="text-3xl text-black">{requisicao.numero_requisicao || requisicao.id}</h2>
+                        <BadgeStatus {...statusMapping}>{statusVisivel}</BadgeStatus>
                     </div>
-                    <p className="text-lg text-gray-700">{requisicao.objeto}</p>
+                    <p className="text-lg text-gray-700">{requisicao.objeto || requisicao.descricao || "-"}</p>
                 </div>
             </div>
 
@@ -225,21 +343,21 @@ export default function DetalheRequisicaoPage() {
                                     <Calendar size={18} className="text-gray-400" />
                                     <div>
                                         <p className="text-xs text-gray-500">Data da Requisição</p>
-                                        <p className="text-sm font-medium">{requisicao.dataRequisicao}</p>
+                                        <p className="text-sm font-medium">{requisicao.data_recebimento ? new Date(requisicao.data_recebimento).toLocaleDateString("pt-BR") : "-"}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                                     <User size={18} className="text-gray-400" />
                                     <div>
                                         <p className="text-xs text-gray-500">Responsável Atual</p>
-                                        <p className="text-sm font-medium">{requisicao.responsavelAtual}</p>
+                                        <p className="text-sm font-medium">{requisicao.responsavel?.nome || "Aguardando atribuição"}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                                     <Building size={18} className="text-gray-400" />
                                     <div>
-                                        <p className="text-xs text-gray-500">Departamento</p>
-                                        <p className="text-sm font-medium">{requisicao.departamento}</p>
+                                        <p className="text-xs text-gray-500">Solicitante</p>
+                                        <p className="text-sm font-medium">{requisicao.requisitante?.nome || "-"}</p>
                                     </div>
                                 </div>
                             </div>
@@ -248,7 +366,7 @@ export default function DetalheRequisicaoPage() {
                                 <h4 className="text-sm font-medium text-gray-700 mb-2">
                                     Descrição
                                 </h4>
-                                <p className="text-sm text-gray-600">{requisicao.descricao}</p>
+                                <p className="text-sm text-gray-600">{requisicao.descricao || requisicao.objeto || "-"}</p>
                             </div>
 
                             {/* Aviso de dados ocultos (RN-VIS-002/003) */}

@@ -9,12 +9,20 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { User, Bell, Shield, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function ConfiguracoesRequisitante() {
+  const { currentUser } = useAuth();
   const [notificacaoEmail, setNotificacaoEmail] = useState(true);
   const [notificacaoPush, setNotificacaoPush] = useState(true);
   const [notificacaoRequisicao, setNotificacaoRequisicao] = useState(true);
   const [notificacaoStatus, setNotificacaoStatus] = useState(true);
+
+  const profile = currentUser?.profile;
+  const nome = profile?.nome || currentUser?.user_metadata?.nome || "Usuário autenticado";
+  const email = profile?.email || currentUser?.email || "";
+  const matricula = currentUser?.id || "Disponível após autenticação";
+  const departamento = profile?.departamento || "Não informado";
 
   const handleSalvarPerfil = () => {
     toast.success("Perfil atualizado com sucesso!");
@@ -56,11 +64,11 @@ export function ConfiguracoesRequisitante() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="nome">Nome Completo</Label>
-                  <Input id="nome" defaultValue="Carlos Oliveira" placeholder="Digite seu nome completo" />
+                  <Input id="nome" defaultValue={nome} placeholder="Digite seu nome completo" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="matricula">Matrícula</Label>
-                  <Input id="matricula" defaultValue="REQ-2024-001" disabled className="bg-gray-50" />
+                  <Input id="matricula" defaultValue={matricula} disabled className="bg-gray-50" />
                 </div>
               </div>
 
@@ -69,7 +77,7 @@ export function ConfiguracoesRequisitante() {
                   <Label htmlFor="email">E-mail</Label>
                   <div className="relative">
                     <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400" />
-                    <Input id="email" type="email" defaultValue="carlos.oliveira@sesc.com.br" className="pl-10" />
+                    <Input id="email" type="email" defaultValue={email} className="pl-10" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -84,11 +92,11 @@ export function ConfiguracoesRequisitante() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="departamento">Departamento</Label>
-                  <Input id="departamento" defaultValue="Operações" disabled className="bg-gray-50" />
+                  <Input id="departamento" defaultValue={departamento} disabled className="bg-gray-50" />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cargo">Cargo</Label>
-                  <Input id="cargo" defaultValue="Analista de Operações" disabled className="bg-gray-50" />
+                  <Input id="cargo" defaultValue="Perfil requisitante" disabled className="bg-gray-50" />
                 </div>
               </div>
 

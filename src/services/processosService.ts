@@ -28,9 +28,11 @@ const PROCESSO_TIMELINE_SELECT = `
 `;
 
 export interface ProcessoPayload {
+  numero_processo?: string | null;
   numero_requisicao?: string | null;
   descricao?: string | null;
   objeto?: string | null;
+  categoria?: string | null;
   modalidade?: string | null;
   status?: string | null;
   prioridade?: string | null;
@@ -46,6 +48,7 @@ export interface ProcessoPayload {
   data_distribuicao?: string | null;
   data_recebimento?: string | null;
   data_finalizacao?: string | null;
+  data_entrega?: string | null;
   data_inicio?: string | null;
   data_fim?: string | null;
 }
@@ -63,12 +66,15 @@ export interface RequisitanteOption {
 interface CreateRequisicaoPayload {
   numero_requisicao?: string | null;
   data_recebimento?: string | null;
+  data_finalizacao?: string | null;
   objeto?: string | null;
+  modalidade?: string | null;
   prioridade?: string | null;
   categoria?: string | null;
   regional?: string | null;
   valor?: number | null;
   requisitante_id?: string | null;
+  responsavel_id?: string | null;
 }
 
 type ProcessoRCPayload = CreateRequisicaoPayload;
@@ -83,6 +89,7 @@ interface CreateProcessoConsolidadoPayload {
   empresa_vencedora?: string | null;
   requisitante_id?: string | null;
   data_fim?: string | null;
+  data_entrega?: string | null;
   status?: string | null;
   modalidade?: string | null;
   objeto?: string | null;
@@ -191,6 +198,40 @@ function stringifyObservacoesMetadata(params: {
   });
 }
 
+function generateReadableRcNumber() {
+  const year = new Date().getFullYear();
+  const sequence = String(Date.now()).slice(-4);
+  return `RC-${year}-${sequence}`;
+}
+
+async function resolveAuthenticatedUserId() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user?.id ?? null;
+}
+
+async function registrarTimelineAberturaRequisicao(params: {
+  processoId: string;
+  numeroRequisicao: string;
+  responsavelId?: string | null;
+}) {
+  const supabase = createClient();
+  const { error } = await supabase.from("processo_timeline").insert({
+    processo_id: params.processoId,
+    titulo: "Abertura de Requisição",
+    status: "RC recebida pelo setor de compras",
+    mensagem: `Requisição ${params.numeroRequisicao} aberta com sucesso.`,
+    responsavel_id: params.responsavelId ?? null,
+  });
+
+  if (error) {
+    throw new Error(getErrorMessage(error));
+  }
+}
+
 export async function getProcessos(): Promise<ProcessoComDetalhes[]> {
   const supabase = createClient();
 
@@ -266,7 +307,8 @@ export async function createProcessoManual(dados: CreateProcessoManualPayload): 
 
   return createProcesso({
     ...restoDados,
-    numero_requisicao: numero_processo ?? restoDados.numero_requisicao ?? null,
+    numero_processo: numero_processo ?? null,
+    numero_requisicao: restoDados.numero_requisicao ?? null,
     observacoes_internas: observacoes || null,
   });
 }
@@ -284,6 +326,7 @@ export async function createProcessoConsolidado(dados: CreateProcessoConsolidado
     empresa_vencedora: dados.empresa_vencedora ?? null,
     requisitante_id: dados.requisitante_id ?? null,
     data_fim: dados.data_fim ?? null,
+    data_entrega: dados.data_entrega ?? null,
     status: dados.status ?? "Ativo",
     modalidade: dados.modalidade ?? "Dispensa",
     objeto: dados.objeto ?? null,
@@ -749,22 +792,28 @@ export async function getRequisitantes(): Promise<RequisitanteOption[]> {
 
 export async function createProcessoRC(dados: ProcessoRCPayload): Promise<Processo> {
   const supabase = createClient();
+  const authenticatedUserId = await resolveAuthenticatedUserId();
+  const numeroRequisicao = dados.numero_requisicao?.trim() || generateReadableRcNumber();
+  const requisitanteId = dados.requisitante_id ?? authenticatedUserId;
 
   const observacoes = [
     dados.regional ? `Regional: ${dados.regional}` : "",
     dados.categoria ? `Categoria: ${dados.categoria}` : "",
+    dados.modalidade ? `Modalidade: ${dados.modalidade}` : "",
   ]
     .filter(Boolean)
     .join(" | ");
 
   const payload: ProcessoPayload = {
-    numero_requisicao: dados.numero_requisicao ?? null,
+    numero_requisicao: numeroRequisicao,
     data_recebimento: dados.data_recebimento ?? null,
     objeto: dados.objeto ?? null,
     descricao: dados.objeto ?? null,
+    categoria: dados.categoria ?? null,
+    modalidade: dados.modalidade ?? null,
     prioridade: dados.prioridade ?? "Média",
     valor: dados.valor ?? null,
-    requisitante_id: dados.requisitante_id ?? null,
+    requisitante_id: requisitanteId,
     status: "RC recebida pelo setor de compras",
     observacoes_internas: observacoes || null,
   };
@@ -779,29 +828,49 @@ export async function createProcessoRC(dados: ProcessoRCPayload): Promise<Proces
     throw new Error(getErrorMessage(error));
   }
 
+  try {
+    await registrarTimelineAberturaRequisicao({
+      processoId: data.id as string,
+      numeroRequisicao,
+      responsavelId: requisitanteId,
+    });
+  } catch (timelineError) {
+    await supabase.from("processos").delete().eq("id", data.id);
+    throw timelineError;
+  }
+
   return data as Processo;
 }
 
 export async function createRequisicao(dados: CreateRequisicaoPayload): Promise<Processo> {
   const supabase = createClient();
+  const authenticatedUserId = await resolveAuthenticatedUserId();
+  const numeroRequisicao = dados.numero_requisicao?.trim() || generateReadableRcNumber();
+  const requisitanteId = dados.requisitante_id ?? authenticatedUserId;
 
   const observacoes = [
     dados.categoria ? `Categoria: ${dados.categoria}` : "",
     dados.data_recebimento ? `Data Recebimento: ${dados.data_recebimento}` : "",
+    dados.data_finalizacao ? `Data Finalização: ${dados.data_finalizacao}` : "",
     dados.regional ? `Regional: ${dados.regional}` : "",
+    dados.modalidade ? `Modalidade: ${dados.modalidade}` : "",
   ]
     .filter(Boolean)
     .join(" | ");
 
   const payload: ProcessoPayload = {
-    numero_requisicao: dados.numero_requisicao ?? null,
+    numero_requisicao: numeroRequisicao,
     data_recebimento: dados.data_recebimento ?? null,
     objeto: dados.objeto ?? null,
     descricao: dados.objeto ?? null,
+    categoria: dados.categoria ?? null,
+    modalidade: dados.modalidade ?? null,
     prioridade: dados.prioridade ?? "Média",
     valor: dados.valor ?? null,
-    requisitante_id: dados.requisitante_id ?? null,
+    requisitante_id: requisitanteId,
+    responsavel_id: dados.responsavel_id ?? null,
     status: "RC recebida pelo setor de compras",
+    data_finalizacao: dados.data_finalizacao ?? null,
     observacoes_internas: observacoes || null,
   };
 
@@ -813,6 +882,17 @@ export async function createRequisicao(dados: CreateRequisicaoPayload): Promise<
 
   if (error) {
     throw new Error(getErrorMessage(error));
+  }
+
+  try {
+    await registrarTimelineAberturaRequisicao({
+      processoId: data.id as string,
+      numeroRequisicao,
+      responsavelId: requisitanteId,
+    });
+  } catch (timelineError) {
+    await supabase.from("processos").delete().eq("id", data.id);
+    throw timelineError;
   }
 
   return data as Processo;

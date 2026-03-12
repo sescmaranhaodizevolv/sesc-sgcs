@@ -165,7 +165,7 @@ export function ConfiguracoesModule({ perfil = "admin" }: ConfiguracoesProps) {
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2"><Plus className="text-[#003366]" size={20} />Adicionar Nova API</DialogTitle>
-                <DialogDescription>Configure uma nova API customizada para integração com o SGCS</DialogDescription>
+                <DialogDescription>Configure uma nova API customizada para integração com o ACompra</DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2"><Label htmlFor="nova-api-nome">Nome da API *</Label><Input id="nova-api-nome" placeholder="Ex: Sistema ERP, API de Consulta CNPJ, etc." value={novaApi.nome} onChange={(e) => setNovaApi({ ...novaApi, nome: e.target.value })} /></div>
@@ -276,7 +276,7 @@ export function ConfiguracoesModule({ perfil = "admin" }: ConfiguracoesProps) {
 
         {isAdmin && (
           <TabsContent value="integracoes" className="space-y-6">
-            <Alert className="border-blue-200 bg-blue-50"><AlertCircle className="h-4 w-4 text-blue-600" /><AlertDescription className="text-blue-800">Configure as APIs externas que serão integradas ao SGCS. As credenciais são criptografadas e armazenadas de forma segura.</AlertDescription></Alert>
+            <Alert className="border-blue-200 bg-blue-50"><AlertCircle className="h-4 w-4 text-blue-600" /><AlertDescription className="text-blue-800">Configure as APIs externas que serão integradas ao ACompra. As credenciais são criptografadas e armazenadas de forma segura.</AlertDescription></Alert>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <Card className="border border-gray-200"><CardContent className="p-4"><p className="text-sm text-gray-600">Total de APIs</p><p className="text-2xl text-black">{apisCustomizadas.length}</p></CardContent></Card>
               <Card className="border border-gray-200"><CardContent className="p-4"><p className="text-sm text-gray-600">APIs Ativas</p><p className="text-2xl text-green-600">{totalApisAtivas}</p></CardContent></Card>
@@ -292,7 +292,7 @@ export function ConfiguracoesModule({ perfil = "admin" }: ConfiguracoesProps) {
               </CardHeader>
               <CardContent className="px-6 pb-6 pt-6">
                 {apisCustomizadas.length === 0 ? (
-                  <div className="py-8 text-center text-gray-500"><Globe className="mx-auto mb-3 text-gray-400" size={48} /><p className="text-sm">Nenhuma API configurada.</p><p className="mt-1 text-xs">Clique em "Adicionar Nova API" para começar.</p></div>
+                  <div className="py-8 text-center text-gray-500"><Globe className="mx-auto mb-3 text-gray-400" size={48} /><p className="text-sm">Nenhuma API configurada.</p><p className="mt-1 text-xs">Clique em &quot;Adicionar Nova API&quot; para começar.</p></div>
                 ) : (
                   <div className="space-y-4">
                     {apisCustomizadas.map((api) => (

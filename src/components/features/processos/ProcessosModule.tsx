@@ -113,6 +113,7 @@
     data_recebimento?: string | null;
     data_distribuicao?: string | null;
     data_finalizacao?: string | null;
+    data_entrega?: string | null;
     data_fim?: string | null;
     atualizado_em?: string;
     requisitante_id?: string | null;
@@ -131,6 +132,10 @@
     empresaVencedora: string;
     cnpj: string;
     numeroProcesso: string;
+    objeto: string;
+    previsaoInicio: string;
+    dataInicio: string;
+    dataTermino: string;
     valorContratado: string;
     vigencia: string;
     aditivos: number;
@@ -141,6 +146,10 @@
     empresaVencedora: string;
     cnpj: string;
     numeroProcesso: string;
+    objeto: string;
+    previsaoInicio: string;
+    dataInicio: string;
+    dataTermino: string;
     valorContratado: string;
     vigencia: string;
     aditivos: number;
@@ -350,7 +359,7 @@
     const numeroRequisicao = processo.numero_requisicao || processo.id;
     const requisitanteNome = processo.requisitante?.nome || "-";
     const responsavelNome = processo.responsavel?.nome || "Não atribuído";
-    const categoria = extractObservacaoCampo(processo.observacoes_internas, "Categoria") || processo.modalidade || "-";
+    const categoria = processo.categoria || extractObservacaoCampo(processo.observacoes_internas, "Categoria") || "Não definida";
     const regional = extractObservacaoCampo(processo.observacoes_internas, "Regional") || "-";
 
     return {
@@ -414,10 +423,12 @@
 
   function mapProcessoToDiario(processo: ProcessoComDetalhes): Processo {
     const statusNormalizado = normalizeStatusAndamento(processo.status);
+    const numeroProcesso = processo.numero_processo?.trim() || processo.numero_requisicao?.trim() || "Não informado";
 
     return {
       id: processo.id,
       descricao: processo.descricao || processo.objeto || "-",
+      numeroProcesso,
       numeroRequisicao: processo.numero_requisicao || "-",
       requisitante: processo.requisitante?.nome || "-",
       objeto: processo.objeto || processo.descricao || "-",
@@ -437,6 +448,7 @@
       observacoesInternas: processo.observacoes_internas || undefined,
       leadTime: processo.lead_time || undefined,
       justificativaDevolucao: processo.justificativa_devolucao || undefined,
+      numero_processo: processo.numero_processo,
       numero_requisicao: processo.numero_requisicao,
       responsavel_id: processo.responsavel_id,
       requisitante_id: processo.requisitante_id,
@@ -471,10 +483,11 @@
     const observacoesParseadas = parseObservacoes(processo.observacoes_internas);
     const cnpj = observacoesParseadas.cnpj || "-";
     const instrumento = observacoesParseadas.tipoInstrumento;
+    const numeroProcesso = processo.numero_processo?.trim() || processo.numero_requisicao?.trim() || "Não informado";
 
     return {
       id: processo.id,
-      numeroProcesso: processo.numero_requisicao || processo.id,
+      numeroProcesso,
       requisitante: processo.requisitante?.nome || "-",
       objeto: processo.objeto || processo.descricao || "-",
       tipo: processo.modalidade || "Dispensa",
@@ -488,6 +501,7 @@
           ? Number(processo.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
           : "R$ 0,00",
       dataFimVigencia: formatDate(processo.data_fim),
+      dataEntrega: formatDate(processo.data_entrega),
       statusContrato: mapStatusToStatusContrato(processo.status),
       numero_requisicao: processo.numero_requisicao,
       empresa_vencedora: processo.empresa_vencedora,
@@ -495,6 +509,7 @@
       data_recebimento: processo.data_recebimento,
       data_distribuicao: processo.data_distribuicao,
       data_finalizacao: processo.data_finalizacao,
+      data_entrega: processo.data_entrega,
       data_fim: processo.data_fim,
       atualizado_em: processo.atualizado_em,
       requisitante_id: processo.requisitante_id,
@@ -515,6 +530,10 @@
       empresaVencedora: processo.empresaVencedora || "-",
       cnpj: processo.cnpj || "-",
       numeroProcesso: processo.numeroProcesso,
+      objeto: processo.objeto || "-",
+      previsaoInicio: processo.dataFinalizacao || "-",
+      dataInicio: processo.dataRecebimento || "-",
+      dataTermino: processo.dataFimVigencia || "-",
       valorContratado: processo.valor || "R$ 0,00",
       vigencia: processo.dataFimVigencia || "-",
       aditivos: countObservacaoOcorrencias(processo.observacoes_internas, "Aditivo"),
@@ -527,6 +546,10 @@
       empresaVencedora: processo.empresaVencedora || "-",
       cnpj: processo.cnpj || "-",
       numeroProcesso: processo.numeroProcesso,
+      objeto: processo.objeto || "-",
+      previsaoInicio: processo.dataFinalizacao || "-",
+      dataInicio: processo.dataRecebimento || "-",
+      dataTermino: processo.dataFimVigencia || "-",
       valorContratado: processo.valor || "R$ 0,00",
       vigencia: processo.dataFimVigencia || "-",
       aditivos: countObservacaoOcorrencias(processo.observacoes_internas, "Aditivo"),
@@ -565,6 +588,22 @@
     }
 
     return <span>{modalidade}</span>;
+  }
+
+  function getBadgeMappingForCategoria(categoria?: string | null) {
+    switch ((categoria || "").trim().toLowerCase()) {
+      case "material":
+        return { intent: "info" as const, weight: "light" as const };
+      case "serviço":
+      case "servico":
+        return { intent: "purple" as const, weight: "light" as const };
+      case "equipamento":
+        return { intent: "warning" as const, weight: "light" as const };
+      case "obra":
+        return { intent: "orange" as const, weight: "light" as const };
+      default:
+        return { intent: "neutral" as const, weight: "light" as const };
+    }
   }
 
   function DataFinalizacaoFallback({ value }: { value?: string | null }) {
@@ -643,8 +682,11 @@
     const [novaDemandaForm, setNovaDemandaForm] = useState({
       numero_requisicao: "",
       data_recebimento: "",
+      data_finalizacao: "",
       requisitante_id: "",
+      responsavel_id: "",
       objeto: "",
+      modalidade: "",
       prioridade: "Média" as PrioridadeRequisicao,
       categoria: "",
       regional: "",
@@ -673,12 +715,14 @@
       modalidade: "Dispensa",
       status: "Ativo",
       dataFimVigencia: "",
+      dataEntrega: "",
       objeto: "",
       cnpj: "",
       instrumento: "Contrato",
     });
     const [selectedProcess, setSelectedProcess] = useState<Processo | null>(null);
     const [formDataEdit, setFormDataEdit] = useState({
+      numeroProcesso: "",
       modalidade: "Dispensa",
       status: "Análise de RC",
       objeto: "",
@@ -691,6 +735,7 @@
       empresaVencedora: "",
       statusContrato: "Ativo",
       dataFimVigencia: "",
+      dataEntrega: "",
       objeto: "",
       cnpj: "",
       instrumento: "Contrato",
@@ -789,6 +834,7 @@
     useEffect(() => {
       if (selectedProcess && isEditProcessModalOpen) {
         setFormDataEdit({
+          numeroProcesso: selectedProcess.numero_processo || selectedProcess.numeroProcesso || selectedProcess.numeroRequisicao || "",
           modalidade: selectedProcess.modalidade || "Dispensa",
           status: selectedProcess.status || "Análise de RC",
           objeto: selectedProcess.objeto || selectedProcess.descricao || "",
@@ -805,6 +851,7 @@
           empresaVencedora: selectedConsolidado.empresaVencedora || "-",
           statusContrato: selectedConsolidado.statusContrato || "Ativo",
           dataFimVigencia: selectedConsolidado.data_fim || "",
+          dataEntrega: selectedConsolidado.data_entrega || "",
           objeto: selectedConsolidado.objeto || "",
           cnpj: selectedConsolidado.cnpj || "",
           instrumento: selectedConsolidado.instrumento || "Contrato",
@@ -812,7 +859,7 @@
       }
     }, [isEditConsolidadoModalOpen, selectedConsolidado]);
 
-    const handleChangeEdit = (field: "modalidade" | "status" | "objeto" | "observacoes" | "dataFinalizacao", value: string) => {
+    const handleChangeEdit = (field: "numeroProcesso" | "modalidade" | "status" | "objeto" | "observacoes" | "dataFinalizacao", value: string) => {
       setFormDataEdit((prev) => ({ ...prev, [field]: value }));
     };
 
@@ -866,7 +913,7 @@
       () =>
         processosDiariosPerfil.filter((processo) => {
           const haystack = [
-            processo.id,
+            processo.numeroProcesso ?? "",
             processo.numeroRequisicao ?? "",
             processo.requisitante ?? "",
             processo.objeto ?? processo.descricao,
@@ -1255,25 +1302,44 @@
     const handleCadastrarNovaDemanda = async () => {
       if (isSubmitting) return;
 
+      if (!novaDemandaForm.objeto.trim() || !novaDemandaForm.modalidade || !novaDemandaForm.valor_estimado.trim()) {
+        toast.error("Preencha os campos obrigatórios da RC.", {
+          description: "Informe objeto, modalidade e valor estimado antes de continuar.",
+        });
+        return;
+      }
+
+      const valorEstimado = parseCurrencyInput(novaDemandaForm.valor_estimado);
+      if (valorEstimado === null || valorEstimado <= 0) {
+        toast.error("Informe um valor estimado válido para a RC.");
+        return;
+      }
+
       setIsSubmitting(true);
       try {
         await createRequisicao({
           numero_requisicao: novaDemandaForm.numero_requisicao,
           data_recebimento: novaDemandaForm.data_recebimento,
+          data_finalizacao: novaDemandaForm.data_finalizacao,
           requisitante_id: novaDemandaForm.requisitante_id,
+          responsavel_id: novaDemandaForm.responsavel_id,
           objeto: novaDemandaForm.objeto,
+          modalidade: novaDemandaForm.modalidade,
           prioridade: novaDemandaForm.prioridade,
           categoria: novaDemandaForm.categoria,
           regional: novaDemandaForm.regional,
-          valor: parseCurrencyInput(novaDemandaForm.valor_estimado),
+          valor: valorEstimado,
         });
         toast.success("Demanda cadastrada com sucesso!");
         setIsNovaDemandaModalOpen(false);
         setNovaDemandaForm({
           numero_requisicao: "",
           data_recebimento: "",
+          data_finalizacao: "",
           requisitante_id: "",
+          responsavel_id: "",
           objeto: "",
+          modalidade: "",
           prioridade: "Média",
           categoria: "",
           regional: "",
@@ -1331,6 +1397,7 @@
         modalidade: "Dispensa",
         status: "Ativo",
         dataFimVigencia: "",
+        dataEntrega: "",
         objeto: "",
         cnpj: "",
         instrumento: "Contrato",
@@ -1367,7 +1434,7 @@
         await createProcessoManual({
           numero_processo: formDataNovoProcesso.id,
           descricao: formDataNovoProcesso.objeto,
-          numero_requisicao: formDataNovoProcesso.id || null,
+          numero_requisicao: formDataNovoProcesso.numeroRequisicao || null,
           objeto: formDataNovoProcesso.objeto,
           modalidade: formDataNovoProcesso.modalidade,
           status: formDataNovoProcesso.status,
@@ -1405,6 +1472,7 @@
           empresa_vencedora: formDataConsolidado.empresaVencedora,
           requisitante_id: formDataConsolidado.requisitante_id || null,
           data_fim: formDataConsolidado.dataFimVigencia || null,
+          data_entrega: formDataConsolidado.dataEntrega || null,
           modalidade: formDataConsolidado.modalidade,
           status: formDataConsolidado.status,
           objeto: formDataConsolidado.objeto,
@@ -1498,6 +1566,7 @@
 
       try {
         await updateProcessoDetails(selectedProcess.id, {
+          numero_processo: formDataEdit.numeroProcesso.trim() || null,
           modalidade: formDataEdit.modalidade,
           status: formDataEdit.status,
           objeto: formDataEdit.objeto,
@@ -1530,6 +1599,7 @@
           empresa_vencedora: formDataEditConsolidado.empresaVencedora,
           status: formDataEditConsolidado.statusContrato,
           data_fim: formDataEditConsolidado.dataFimVigencia || null,
+          data_entrega: formDataEditConsolidado.dataEntrega || null,
           objeto: formDataEditConsolidado.objeto,
           descricao: formDataEditConsolidado.objeto,
           cnpj: formDataEditConsolidado.cnpj,
@@ -1783,6 +1853,12 @@
                             className="min-w-[200px]"
                           />
                           <SortableTableHead
+                            label="Categoria"
+                            onClick={() => sortReq("categoria")}
+                            currentDirection={configReq.key === "categoria" ? configReq.direction : null}
+                            className="hidden min-w-[140px] md:table-cell"
+                          />
+                          <SortableTableHead
                             label="Objeto"
                             onClick={() => sortReq("objeto")}
                             currentDirection={configReq.key === "objeto" ? configReq.direction : null}
@@ -1821,6 +1897,11 @@
                             <TableRow key={requisicao.id}>
                               <TableCell className="text-black sticky left-0 z-10 bg-white">{requisicao.id}</TableCell>
                               <TableCell className="text-gray-600">{requisicao.requisitante}</TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <BadgeStatus size="sm" {...getBadgeMappingForCategoria(requisicao.categoria)}>
+                                  {requisicao.categoria || "Não definida"}
+                                </BadgeStatus>
+                              </TableCell>
                               <TableCell className="text-gray-600">{requisicao.objeto}</TableCell>
                               <TableCell className="text-gray-600">{requisicao.responsavel}</TableCell>
                               <TableCell>
@@ -2047,11 +2128,17 @@
                       <TableHeader>
                         <TableRow>
                           <SortableTableHead
-                            label="ID Requisição"
-                            onClick={() => requestSortDiario("id")}
-                            currentDirection={sortConfigDiario.key === "id" ? sortConfigDiario.direction : null}
+                            label="ID Processo"
+                            onClick={() => requestSortDiario("numeroProcesso")}
+                            currentDirection={sortConfigDiario.key === "numeroProcesso" ? sortConfigDiario.direction : null}
                             className="sticky left-0 z-10 min-w-[170px] bg-white"
                             />
+                          <SortableTableHead
+                            label="ID Requisição"
+                            onClick={() => requestSortDiario("numeroRequisicao")}
+                            currentDirection={sortConfigDiario.key === "numeroRequisicao" ? sortConfigDiario.direction : null}
+                            className="min-w-[170px]"
+                          />
                           <SortableTableHead
                             label="Objeto"
                             onClick={() => requestSortDiario("objeto")}
@@ -2086,8 +2173,11 @@
                           return (
                             <TableRow key={processo.id}>
                               <TableCell className="text-black sticky left-0 z-10 bg-white">
-                                {processo.numeroRequisicao ?? "-"}
+                                <span className={processo.numero_processo?.trim() ? "font-bold text-black" : "font-bold text-slate-500"}>
+                                  {processo.numeroProcesso ?? "Não informado"}
+                                </span>
                               </TableCell>
+                              <TableCell className="text-gray-600">{processo.numeroRequisicao ?? "-"}</TableCell>
                               <TableCell className="text-gray-600">{processo.objeto ?? processo.descricao}</TableCell>
                               <TableCell className="text-gray-600">{processo.requisitante ?? "-"}</TableCell>
                               <TableCell className="text-gray-600"><ModalidadeBadge modalidade={processo.modalidade} /></TableCell>
@@ -2447,7 +2537,8 @@
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <SortableTableHead label="ID Processo" onClick={() => sortDiretas("numeroProcesso")} currentDirection={configDiretas.key === "numeroProcesso" ? configDiretas.direction : null} className="sticky left-0 z-10 min-w-[170px] bg-white" />
+                              <SortableTableHead label="Número do Processo" onClick={() => sortDiretas("numeroProcesso")} currentDirection={configDiretas.key === "numeroProcesso" ? configDiretas.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" />
+                              <SortableTableHead label="ID Requisição" onClick={() => sortDiretas("numero_requisicao")} currentDirection={configDiretas.key === "numero_requisicao" ? configDiretas.direction : null} className="min-w-[170px]" />
                               <SortableTableHead label="Requisitante" onClick={() => sortDiretas("requisitante")} currentDirection={configDiretas.key === "requisitante" ? configDiretas.direction : null} className="min-w-[220px]" />
                               <SortableTableHead label="Objeto" onClick={() => sortDiretas("objeto")} currentDirection={configDiretas.key === "objeto" ? configDiretas.direction : null} className="min-w-[320px]" />
                               <SortableTableHead label="Tipo/Modalidade" onClick={() => sortDiretas("tipo")} currentDirection={configDiretas.key === "tipo" ? configDiretas.direction : null} className="min-w-[200px]" />
@@ -2455,6 +2546,7 @@
                               <SortableTableHead label="Responsável" onClick={() => sortDiretas("responsavel")} currentDirection={configDiretas.key === "responsavel" ? configDiretas.direction : null} className="min-w-[160px]" />
                               <TableHead className="min-w-[140px]">Data Recebimento</TableHead>
                               <TableHead className="min-w-[140px]">Data Finalização</TableHead>
+                              <TableHead className="min-w-[140px]">Fim da Vigência</TableHead>
                               <SortableTableHead label="Empresa Vencedora" onClick={() => sortDiretas("empresaVencedora")} currentDirection={configDiretas.key === "empresaVencedora" ? configDiretas.direction : null} className="min-w-[220px]" />
                               <TableHead className="min-w-[140px]">Data da Entrega</TableHead>
                               <SortableTableHead label="Valor" onClick={() => sortDiretas("valor")} currentDirection={configDiretas.key === "valor" ? configDiretas.direction : null} className="min-w-[140px]" />
@@ -2470,13 +2562,15 @@
                                     {processo.tipoInstrumento === "TRP" ? "TRP" : "Contrato"}
                                   </span>
                                 </TableCell>
-                                <TableCell className="text-gray-600">{processo.requisitante}</TableCell>
+                                <TableCell className="text-gray-600">{processo.numero_requisicao || "-"}</TableCell>
+                                <TableCell className="text-gray-600">{processo.requisitante_obj?.nome || processo.requisitante || "-"}</TableCell>
                                 <TableCell className="text-gray-600">{processo.objeto}</TableCell>
                                 <TableCell className="text-gray-600">{processo.tipo}</TableCell>
                                 <TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus></TableCell>
-                                <TableCell className="text-gray-600">{processo.responsavel}</TableCell>
+                                <TableCell className="text-gray-600">{processo.responsavel_obj?.nome || processo.responsavel || "-"}</TableCell>
                                 <TableCell className="text-gray-600">{processo.dataRecebimento}</TableCell>
                                 <TableCell className="text-gray-600">{processo.dataFinalizacao}</TableCell>
+                                <TableCell className="text-gray-600">{processo.dataFimVigencia || "-"}</TableCell>
                                 <TableCell className="text-black">{processo.empresaVencedora ?? "-"}</TableCell>
                                 <TableCell className="text-gray-600">{processo.dataEntrega ?? "-"}</TableCell>
                                 <TableCell className="text-black">{processo.valor}</TableCell>
@@ -2518,7 +2612,8 @@
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <SortableTableHead label="ID Processo" onClick={() => sortLicitacoes("numeroProcesso")} currentDirection={configLicitacoes.key === "numeroProcesso" ? configLicitacoes.direction : null} className="sticky left-0 z-10 min-w-[170px] bg-white" />
+                              <SortableTableHead label="Número do Processo" onClick={() => sortLicitacoes("numeroProcesso")} currentDirection={configLicitacoes.key === "numeroProcesso" ? configLicitacoes.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" />
+                              <SortableTableHead label="ID Requisição" onClick={() => sortLicitacoes("numero_requisicao")} currentDirection={configLicitacoes.key === "numero_requisicao" ? configLicitacoes.direction : null} className="min-w-[170px]" />
                               <SortableTableHead label="Requisitante" onClick={() => sortLicitacoes("requisitante")} currentDirection={configLicitacoes.key === "requisitante" ? configLicitacoes.direction : null} className="min-w-[220px]" />
                               <SortableTableHead label="Objeto" onClick={() => sortLicitacoes("objeto")} currentDirection={configLicitacoes.key === "objeto" ? configLicitacoes.direction : null} className="min-w-[320px]" />
                               <SortableTableHead label="Tipo/Modalidade" onClick={() => sortLicitacoes("tipo")} currentDirection={configLicitacoes.key === "tipo" ? configLicitacoes.direction : null} className="min-w-[200px]" />
@@ -2526,6 +2621,7 @@
                               <SortableTableHead label="Responsável" onClick={() => sortLicitacoes("responsavel")} currentDirection={configLicitacoes.key === "responsavel" ? configLicitacoes.direction : null} className="min-w-[160px]" />
                               <TableHead className="min-w-[140px]">Data Recebimento</TableHead>
                               <TableHead className="min-w-[140px]">Data Finalização</TableHead>
+                              <TableHead className="min-w-[140px]">Fim da Vigência</TableHead>
                               <TableHead className="min-w-[150px]">Data Homologação</TableHead>
                               <TableHead className="min-w-[150px]">Tempo Total (Dias)</TableHead>
                               <SortableTableHead label="Valor" onClick={() => sortLicitacoes("valor")} currentDirection={configLicitacoes.key === "valor" ? configLicitacoes.direction : null} className="min-w-[140px]" />
@@ -2541,13 +2637,15 @@
                                     {processo.tipoInstrumento === "TRP" ? "TRP" : "Contrato"}
                                   </span>
                                 </TableCell>
-                                <TableCell className="text-gray-600">{processo.requisitante}</TableCell>
+                                <TableCell className="text-gray-600">{processo.numero_requisicao || "-"}</TableCell>
+                                <TableCell className="text-gray-600">{processo.requisitante_obj?.nome || processo.requisitante || "-"}</TableCell>
                                 <TableCell className="text-gray-600">{processo.objeto}</TableCell>
                                 <TableCell className="text-gray-600">{processo.tipo}</TableCell>
                                 <TableCell><BadgeStatus {...getBadgeMappingForStatus(processo.status)}>{processo.status}</BadgeStatus></TableCell>
-                                <TableCell className="text-gray-600">{processo.responsavel}</TableCell>
+                                <TableCell className="text-gray-600">{processo.responsavel_obj?.nome || processo.responsavel || "-"}</TableCell>
                                 <TableCell className="text-gray-600">{processo.dataRecebimento}</TableCell>
                                 <TableCell className="text-gray-600">{processo.dataFinalizacao}</TableCell>
+                                <TableCell className="text-gray-600">{processo.dataFimVigencia || "-"}</TableCell>
                                 <TableCell className="text-gray-600">{processo.dataHomologacao ?? "-"}</TableCell>
                                 <TableCell className="text-gray-600">{processo.tempoTotalDias ?? "-"}</TableCell>
                                 <TableCell className="text-black">{processo.valor}</TableCell>
@@ -2619,11 +2717,14 @@
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <SortableTableHead label="Número do Processo" onClick={() => sortTRP("numeroProcesso")} currentDirection={configTRP.key === "numeroProcesso" ? configTRP.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" />
+                              <TableHead className="min-w-[300px]">Objeto</TableHead>
                               <SortableTableHead label="Empresa Vencedora" onClick={() => sortTRP("empresaVencedora")} currentDirection={configTRP.key === "empresaVencedora" ? configTRP.direction : null} className="min-w-[220px]" />
                               <TableHead className="min-w-[180px]">CNPJ</TableHead>
-                              <SortableTableHead label="Número do Processo" onClick={() => sortTRP("numeroProcesso")} currentDirection={configTRP.key === "numeroProcesso" ? configTRP.direction : null} className="min-w-[160px]" />
+                              <TableHead className="min-w-[140px]">Previsão de Início</TableHead>
+                              <TableHead className="min-w-[140px]">Início</TableHead>
+                              <TableHead className="min-w-[140px]">Término</TableHead>
                               <SortableTableHead label="Valor Contratado" onClick={() => sortTRP("valorContratado")} currentDirection={configTRP.key === "valorContratado" ? configTRP.direction : null} className="min-w-[140px]" />
-                              <TableHead className="min-w-[120px]">Vigência</TableHead>
                               <TableHead className="min-w-[100px]">Aditivos</TableHead>
                               <TableHead className="min-w-[100px]">Ações</TableHead>
                             </TableRow>
@@ -2631,11 +2732,14 @@
                           <TableBody>
                             {sortedTRP.map((trp) => (
                               <TableRow key={trp.numeroProcesso}>
+                                <TableCell className="text-black sticky left-0 z-10 bg-white">{trp.numeroProcesso}</TableCell>
+                                <TableCell className="max-w-[300px] truncate text-gray-600">{trp.objeto}</TableCell>
                                 <TableCell className="text-black">{trp.empresaVencedora}</TableCell>
                                 <TableCell className="text-gray-600">{trp.cnpj}</TableCell>
-                                <TableCell className="text-black">{trp.numeroProcesso}</TableCell>
+                                <TableCell className="text-gray-600">{trp.previsaoInicio}</TableCell>
+                                <TableCell className="text-gray-600">{trp.dataInicio}</TableCell>
+                                <TableCell className="text-gray-600">{trp.dataTermino}</TableCell>
                                 <TableCell className="text-black">{trp.valorContratado}</TableCell>
-                                <TableCell className="text-gray-600">{trp.vigencia}</TableCell>
                                 <TableCell className="text-gray-600">{trp.aditivos}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-2">
@@ -2692,11 +2796,14 @@
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <SortableTableHead label="Número do Processo" onClick={() => sortContratos("numeroProcesso")} currentDirection={configContratos.key === "numeroProcesso" ? configContratos.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" />
+                              <TableHead className="min-w-[300px]">Objeto</TableHead>
                               <SortableTableHead label="Empresa Vencedora" onClick={() => sortContratos("empresaVencedora")} currentDirection={configContratos.key === "empresaVencedora" ? configContratos.direction : null} className="min-w-[220px]" />
                               <TableHead className="min-w-[180px]">CNPJ</TableHead>
-                              <SortableTableHead label="Número do Processo" onClick={() => sortContratos("numeroProcesso")} currentDirection={configContratos.key === "numeroProcesso" ? configContratos.direction : null} className="min-w-[160px]" />
+                              <TableHead className="min-w-[140px]">Previsão de Início</TableHead>
+                              <TableHead className="min-w-[140px]">Início</TableHead>
+                              <TableHead className="min-w-[140px]">Término</TableHead>
                               <SortableTableHead label="Valor Contratado" onClick={() => sortContratos("valorContratado")} currentDirection={configContratos.key === "valorContratado" ? configContratos.direction : null} className="min-w-[140px]" />
-                              <TableHead className="min-w-[120px]">Vigência</TableHead>
                               <TableHead className="min-w-[100px]">Aditivos</TableHead>
                               <TableHead className="min-w-[100px]">Ações</TableHead>
                             </TableRow>
@@ -2704,11 +2811,14 @@
                           <TableBody>
                             {sortedContratos.map((contrato) => (
                               <TableRow key={contrato.numeroProcesso}>
+                                <TableCell className="text-black sticky left-0 z-10 bg-white">{contrato.numeroProcesso}</TableCell>
+                                <TableCell className="max-w-[300px] truncate text-gray-600">{contrato.objeto}</TableCell>
                                 <TableCell className="text-black">{contrato.empresaVencedora}</TableCell>
                                 <TableCell className="text-gray-600">{contrato.cnpj}</TableCell>
-                                <TableCell className="text-black">{contrato.numeroProcesso}</TableCell>
+                                <TableCell className="text-gray-600">{contrato.previsaoInicio}</TableCell>
+                                <TableCell className="text-gray-600">{contrato.dataInicio}</TableCell>
+                                <TableCell className="text-gray-600">{contrato.dataTermino}</TableCell>
                                 <TableCell className="text-black">{contrato.valorContratado}</TableCell>
-                                <TableCell className="text-gray-600">{contrato.vigencia}</TableCell>
                                 <TableCell className="text-gray-600">{contrato.aditivos}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-2">
@@ -2971,8 +3081,37 @@
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nova-rc-responsavel">Responsável</Label>
+                    <Select
+                      value={novaDemandaForm.responsavel_id}
+                      onValueChange={(value) => setNovaDemandaForm((prev) => ({ ...prev, responsavel_id: value }))}
+                    >
+                      <SelectTrigger id="nova-rc-responsavel">
+                        <SelectValue placeholder="Selecione o comprador responsável" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {compradoresOptions.map((comprador) => (
+                          <SelectItem key={comprador.id} value={comprador.id}>
+                            {comprador.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nova-rc-data-finalizacao">Data Finalização</Label>
+                    <Input
+                      id="nova-rc-data-finalizacao"
+                      type="date"
+                      value={novaDemandaForm.data_finalizacao}
+                      onChange={(e) => setNovaDemandaForm((prev) => ({ ...prev, data_finalizacao: e.target.value }))}
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="nova-rc-objeto">Objeto da Compra</Label>
+                  <Label htmlFor="nova-rc-objeto">Objeto da Compra *</Label>
                   <Textarea
                     id="nova-rc-objeto"
                     rows={3}
@@ -2980,6 +3119,23 @@
                     value={novaDemandaForm.objeto}
                     onChange={(e) => setNovaDemandaForm((prev) => ({ ...prev, objeto: e.target.value }))}
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="nova-rc-modalidade">Modalidade *</Label>
+                  <Select
+                    value={novaDemandaForm.modalidade}
+                    onValueChange={(value) => setNovaDemandaForm((prev) => ({ ...prev, modalidade: value }))}
+                  >
+                    <SelectTrigger id="nova-rc-modalidade">
+                      <SelectValue placeholder="Selecione a modalidade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Dispensa">Dispensa</SelectItem>
+                      <SelectItem value="Inexigibilidade">Inexigibilidade</SelectItem>
+                      <SelectItem value="Pregão Eletrônico">Pregão Eletrônico</SelectItem>
+                      <SelectItem value="Licitacao (Pesquisa de Preco)">Licitação (Pesquisa de Preço)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -3021,7 +3177,7 @@
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="nova-rc-valor">Valor Estimado</Label>
+                    <Label htmlFor="nova-rc-valor">Valor Estimado *</Label>
                     <Input
                       id="nova-rc-valor"
                       placeholder="R$ 0,00"
@@ -3039,7 +3195,12 @@
                 <Button
                   className="flex-1 bg-[#003366] hover:bg-[#002244] text-white"
                   onClick={() => void handleCadastrarNovaDemanda()}
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting ||
+                    !novaDemandaForm.objeto.trim() ||
+                    !novaDemandaForm.modalidade ||
+                    !novaDemandaForm.valor_estimado.trim()
+                  }
                 >
                   Cadastrar Demanda
                 </Button>
@@ -3319,6 +3480,15 @@
                       onChange={(e) => setFormDataConsolidado((prev) => ({ ...prev, dataFimVigencia: e.target.value }))}
                     />
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="novo-cons-entrega">Data de Entrega (Opcional)</Label>
+                  <Input
+                    id="novo-cons-entrega"
+                    type="date"
+                    value={formDataConsolidado.dataEntrega}
+                    onChange={(e) => setFormDataConsolidado((prev) => ({ ...prev, dataEntrega: e.target.value }))}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="novo-cons-objeto">Objeto do Contrato</Label>
@@ -3729,6 +3899,7 @@
             if (!open) {
               setSelectedProcess(null);
               setFormDataEdit({
+                numeroProcesso: "",
                 modalidade: "Dispensa",
                 status: "Análise de RC",
                 objeto: "",
@@ -3742,13 +3913,13 @@
             <div className="flex-1 overflow-y-auto px-6">
               <DialogHeader className="pt-6">
                 <DialogTitle>Editar Processo</DialogTitle>
-                <DialogDescription>Atualize os dados do processo {selectedProcess?.id}</DialogDescription>
+                <DialogDescription>Atualize os dados do processo {selectedProcess?.numero_processo || selectedProcess?.numeroRequisicao || "em andamento"}</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4 pb-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="edit-processo-id">ID do Processo</Label>
-                    <Input id="edit-processo-id" defaultValue={selectedProcess?.id} disabled />
+                    <Input id="edit-processo-id" value={formDataEdit.numeroProcesso} onChange={(e) => handleChangeEdit("numeroProcesso", e.target.value)} placeholder="Ex: 0029/26-PG" />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="edit-processo-rc">ID Requisição</Label>
@@ -3843,6 +4014,7 @@
                 empresaVencedora: "",
                 statusContrato: "Ativo",
                 dataFimVigencia: "",
+                dataEntrega: "",
                 objeto: "",
                 cnpj: "",
                 instrumento: "Contrato",
@@ -3914,6 +4086,10 @@
                     <Label htmlFor="edit-consolidado-data">Data Fim da Vigência</Label>
                     <Input id="edit-consolidado-data" type="date" value={formDataEditConsolidado.dataFimVigencia} onChange={(e) => setFormDataEditConsolidado((prev) => ({ ...prev, dataFimVigencia: e.target.value }))} />
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-consolidado-entrega">Data de Entrega (Opcional)</Label>
+                  <Input id="edit-consolidado-entrega" type="date" value={formDataEditConsolidado.dataEntrega} onChange={(e) => setFormDataEditConsolidado((prev) => ({ ...prev, dataEntrega: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-consolidado-objeto">Objeto do Contrato</Label>

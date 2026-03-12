@@ -1,4 +1,4 @@
-# Jornada do Perfil Requisitante (Visualizador) - SGCS
+# Jornada do Perfil Requisitante (Visualizador) - ACompra
 
 ## ✅ Status da Implementação
 **Status:** Implementado e funcional  
@@ -7,7 +7,7 @@
 
 ## 📋 Visão Geral
 
-Este documento detalha a implementação completa da jornada do perfil **Requisitante/Visualizador** no Sistema de Gestão de Contratos e Suprimentos (SGCS), conforme especificado no **PRD 003**.
+Este documento detalha a implementação completa da jornada do perfil **Requisitante/Visualizador** no ACompra, conforme especificado no **PRD 003**.
 
 O perfil Requisitante foi desenvolvido para funcionários solicitantes do SESC Maranhão que iniciaram Requisições de Compra (RCs) no sistema MXM e precisam acompanhar o andamento de suas solicitações de forma transparente e autoatendimento.
 
@@ -280,7 +280,7 @@ Oferecer transparência e autoatendimento para que requisitantes possam:
 
 ### Layout
 - **Sidebar:** Minimalista com 2 itens
-- **Header:** Exibe "Requisitante/Visualizador - SGCS"
+- **Header:** Exibe "Requisitante/Visualizador - ACompra"
 - **Cards:** Bordas cinza, espaçamento consistente
 - **Botões Primários:** `bg-[#003366]` (azul institucional)
 - **Empty States:** Ícone cinza + mensagem explicativa

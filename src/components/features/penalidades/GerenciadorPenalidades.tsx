@@ -680,7 +680,7 @@ export function GerenciadorPenalidades({ viewMode }: GerenciadorPenalidadesProps
           <AlertDialogHeader>
             <AlertDialogTitle>Encerrar Penalidade</AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div className="space-y-3"><p>Tem certeza que deseja encerrar esta penalidade? A ação é manual e a penalidade será movida para a aba "Encerradas".</p>{penalidadeParaEncerrar && (<div className="space-y-1 pt-2"><p><span className="text-black">Empresa:</span> {penalidadeParaEncerrar.empresa}</p><p><span className="text-black">Processo:</span> {penalidadeParaEncerrar.processo}</p><p><span className="text-black">Valor:</span> {penalidadeParaEncerrar.valor}</p></div>)}</div>
+              <div className="space-y-3"><p>Tem certeza que deseja encerrar esta penalidade? A ação é manual e a penalidade será movida para a aba &quot;Encerradas&quot;.</p>{penalidadeParaEncerrar && (<div className="space-y-1 pt-2"><p><span className="text-black">Empresa:</span> {penalidadeParaEncerrar.empresa}</p><p><span className="text-black">Processo:</span> {penalidadeParaEncerrar.processo}</p><p><span className="text-black">Valor:</span> {penalidadeParaEncerrar.valor}</p></div>)}</div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel onClick={() => setPenalidadeParaEncerrar(null)}>Cancelar</AlertDialogCancel><AlertDialogAction onClick={() => void handleEncerrar()} className="bg-[#003366] hover:bg-[#002244]">Encerrar</AlertDialogAction></AlertDialogFooter>

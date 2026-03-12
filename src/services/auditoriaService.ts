@@ -14,6 +14,10 @@ export interface AuditoriaLog {
   dados_novos: Record<string, unknown> | null;
   ip: string | null;
   criado_em: string;
+  usuario?: {
+    nome: string | null;
+    email: string | null;
+  } | null;
 }
 
 export interface AuditoriaLogFilters {
@@ -28,7 +32,7 @@ export async function getLogs(filters?: AuditoriaLogFilters): Promise<AuditoriaL
 
   let query = supabase
     .from("auditoria_logs")
-    .select("*")
+    .select("*, usuario:profiles(nome,email)")
     .order("criado_em", { ascending: false });
 
   if (filters?.tabela) {

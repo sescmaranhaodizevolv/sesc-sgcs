@@ -6,7 +6,6 @@
  */
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
     LayoutDashboard,
@@ -28,7 +27,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserProfile } from "@/types";
-import logoSesc from "@/assets/logo_sesc.png";
 
 interface SidebarNavItem {
     id: string;
@@ -194,20 +192,11 @@ export function Sidebar({ profile }: SidebarProps) {
 
     return (
         <div className="w-full h-full bg-sesc-blue text-white flex flex-col overflow-hidden">
-            {/* Logo SESC */}
+            {/* Identidade do sistema */}
             <div className="p-6 border-b border-sesc-blue-light flex-shrink-0">
-                <div className="flex items-center justify-center">
-                    <div className="text-center">
-                        <Image
-                            src={logoSesc}
-                            alt="Logo SESC"
-                            width={140}
-                            height={44}
-                            className="mx-auto h-auto"
-                            priority
-                        />
-                        <p className="text-xs text-gray-300 mt-1">Maranhão</p>
-                    </div>
+                <div className="text-center">
+                    <p className="text-lg font-semibold tracking-wide text-white">ACompra</p>
+                    <p className="text-xs text-gray-300 mt-1">Gestão de Compras SESC</p>
                 </div>
             </div>
 

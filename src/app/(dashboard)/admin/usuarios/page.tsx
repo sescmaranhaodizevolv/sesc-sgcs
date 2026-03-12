@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Edit,
   FileSignature,
@@ -8,7 +8,6 @@ import {
   Search,
   Shield,
   ShoppingCart,
-  Trash2,
   UserCheck,
   Users,
   UserX,
@@ -17,13 +16,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,11 +26,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  DialogClose,
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -51,79 +43,19 @@ import { BadgeStatus } from "@/components/ui/badge-status";
 import { getBadgeMappingForPerfil, getBadgeMappingForStatus } from "@/lib/badge-mappings";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  criarUsuario,
+  deleteUsuario,
+  getUsuarios,
+  type UsuarioItem,
+  type UsuarioRoleUi,
+  type UsuarioStatusUi,
+  updateUsuario,
+} from "@/services/usuariosService";
 
-type PerfilUsuario =
-  | "Administrador"
-  | "Comprador/Responsável"
-  | "Requisitante/Visualizador"
-  | "Gestor de Contratos";
-type StatusUsuario = "Ativo" | "Inativo";
-
-interface Usuario {
-  id: number;
-  nome: string;
-  email: string;
-  perfil: PerfilUsuario;
-  status: StatusUsuario;
-  ultimoAcesso: string;
-  dataCriacao: string;
-  departamento: string;
-}
-
-const usuariosIniciais: Usuario[] = [
-  {
-    id: 1,
-    nome: "Maria Silva",
-    email: "maria.silva@sesc.com.br",
-    perfil: "Administrador",
-    status: "Ativo",
-    ultimoAcesso: "25/01/2024 14:30",
-    dataCriacao: "15/01/2024",
-    departamento: "Diretoria",
-  },
-  {
-    id: 2,
-    nome: "João Santos",
-    email: "joao.santos@sesc.com.br",
-    perfil: "Comprador/Responsável",
-    status: "Ativo",
-    ultimoAcesso: "25/01/2024 09:15",
-    dataCriacao: "10/01/2024",
-    departamento: "Suprimentos",
-  },
-  {
-    id: 3,
-    nome: "Ana Costa",
-    email: "ana.costa@sesc.com.br",
-    perfil: "Requisitante/Visualizador",
-    status: "Ativo",
-    ultimoAcesso: "24/01/2024 16:45",
-    dataCriacao: "08/01/2024",
-    departamento: "Saúde",
-  },
-  {
-    id: 4,
-    nome: "Carlos Oliveira",
-    email: "carlos.oliveira@sesc.com.br",
-    perfil: "Gestor de Contratos",
-    status: "Inativo",
-    ultimoAcesso: "20/01/2024 11:20",
-    dataCriacao: "05/01/2024",
-    departamento: "Gestão de Contratos",
-  },
-  {
-    id: 5,
-    nome: "Fernanda Lima",
-    email: "fernanda.lima@sesc.com.br",
-    perfil: "Requisitante/Visualizador",
-    status: "Ativo",
-    ultimoAcesso: "25/01/2024 13:10",
-    dataCriacao: "12/01/2024",
-    departamento: "Eventos",
-  },
-];
-
-const permissoesPorPerfil: Record<PerfilUsuario, string[]> = {
+const permissoesPorPerfil: Record<UsuarioRoleUi, string[]> = {
   Administrador: [
     "Gerenciar todos os processos",
     "Cadastrar e editar usuários",
@@ -164,6 +96,13 @@ const departamentosDisponiveis = [
   "Jurídico",
 ] as const;
 
+const perfisDisponiveis: UsuarioRoleUi[] = [
+  "Administrador",
+  "Comprador/Responsável",
+  "Requisitante/Visualizador",
+  "Gestor de Contratos",
+];
+
 const normalizar = (valor: string) =>
   valor
     .normalize("NFD")
@@ -171,30 +110,53 @@ const normalizar = (valor: string) =>
     .toLowerCase();
 
 export default function UsuariosPage() {
-  const [usuariosList, setUsuariosList] = useState<Usuario[]>(usuariosIniciais);
+  const supabase = useMemo(() => createClient(), []);
+  const { currentUser, currentProfile } = useAuth();
+
+  const [usuariosList, setUsuariosList] = useState<UsuarioItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [perfilFilter, setPerfilFilter] = useState("todos");
   const [statusFilter, setStatusFilter] = useState("todos");
-  const [perfilEdicaoPorUsuario, setPerfilEdicaoPorUsuario] = useState<Record<number, PerfilUsuario>>({});
-  const [departamentoEdicaoPorUsuario, setDepartamentoEdicaoPorUsuario] = useState<Record<number, string>>({});
-  const [statusEdicaoPorUsuario, setStatusEdicaoPorUsuario] = useState<Record<number, StatusUsuario>>({});
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedUsuario, setSelectedUsuario] = useState<UsuarioItem | null>(null);
+  const [perfilEdicao, setPerfilEdicao] = useState<UsuarioRoleUi>("Requisitante/Visualizador");
+  const [departamentoEdicao, setDepartamentoEdicao] = useState("");
+  const [statusEdicao, setStatusEdicao] = useState<UsuarioStatusUi>("Ativo");
+  const [novoUsuario, setNovoUsuario] = useState({ nome: "", email: "", perfil: "", departamento: "" });
 
-  const handleSalvarAlteracoes = (id: number) => {
-    setUsuariosList((prev) =>
-      prev.map((usuario) =>
-        usuario.id === id
-          ? {
-              ...usuario,
-              perfil: perfilEdicaoPorUsuario[id] ?? usuario.perfil,
-              departamento: departamentoEdicaoPorUsuario[id] ?? usuario.departamento,
-              status: statusEdicaoPorUsuario[id] ?? usuario.status,
-            }
-          : usuario,
-      ),
-    );
-
-    toast.success("Usuário atualizado com sucesso!");
+  const loadUsuarios = async () => {
+    setIsLoading(true);
+    try {
+      const data = await getUsuarios({ orderBy: "full_name", ascending: true });
+      setUsuariosList(data);
+    } catch (error) {
+      toast.error("Erro ao carregar usuários", {
+        description: error instanceof Error ? error.message : "Não foi possível carregar os perfis reais do Supabase.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  useEffect(() => {
+    void loadUsuarios();
+  }, []);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-usuarios-profiles")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        void loadUsuarios();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
 
   const statusCounts = useMemo(
     () => ({
@@ -206,29 +168,116 @@ export default function UsuariosPage() {
       ativos: usuariosList.filter((u) => u.status === "Ativo").length,
       inativos: usuariosList.filter((u) => u.status === "Inativo").length,
     }),
-    [usuariosList],
+    [usuariosList]
   );
 
-  const filteredUsuarios = usuariosList.filter((usuario) => {
-    const matchesSearch =
-      usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      usuario.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      usuario.departamento.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesPerfil = perfilFilter === "todos" || normalizar(usuario.perfil) === normalizar(perfilFilter);
-    const matchesStatus = statusFilter === "todos" || normalizar(usuario.status) === normalizar(statusFilter);
-    return matchesSearch && matchesPerfil && matchesStatus;
-  });
+  const filteredUsuarios = useMemo(
+    () =>
+      usuariosList.filter((usuario) => {
+        const matchesSearch =
+          usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          usuario.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          usuario.departamento.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesPerfil = perfilFilter === "todos" || normalizar(usuario.perfil) === normalizar(perfilFilter);
+        const matchesStatus = statusFilter === "todos" || normalizar(usuario.status) === normalizar(statusFilter);
+        return matchesSearch && matchesPerfil && matchesStatus;
+      }),
+    [perfilFilter, searchTerm, statusFilter, usuariosList]
+  );
 
   const { items: sortedUsuarios, requestSort: sortUsuarios, sortConfig: configUsuarios } = useTableSort(filteredUsuarios);
 
+  const openEditDialog = (usuario: UsuarioItem) => {
+    setSelectedUsuario(usuario);
+    setPerfilEdicao(usuario.perfil);
+    setDepartamentoEdicao(usuario.departamento);
+    setStatusEdicao(usuario.status);
+    setIsEditDialogOpen(true);
+  };
+
+  const openDeleteDialog = (usuario: UsuarioItem) => {
+    setSelectedUsuario(usuario);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleSalvarAlteracoes = async () => {
+    if (!selectedUsuario) return;
+
+    const promise = updateUsuario(selectedUsuario.id, {
+      perfil: perfilEdicao,
+      departamento: departamentoEdicao,
+      status: statusEdicao,
+    });
+
+    await toast.promise(promise, {
+      loading: "Salvando alterações do usuário...",
+      success: "Usuário atualizado com sucesso!",
+      error: (error) => (error instanceof Error ? error.message : "Não foi possível atualizar o usuário."),
+    });
+
+    setIsEditDialogOpen(false);
+    setSelectedUsuario(null);
+    await loadUsuarios();
+  };
+
+  const handleDeleteUsuario = async () => {
+    if (!selectedUsuario) return;
+
+    const promise = deleteUsuario(selectedUsuario.id);
+
+    await toast.promise(promise, {
+      loading: "Inativando usuário...",
+      success: "Usuário inativado com sucesso!",
+      error: (error) => (error instanceof Error ? error.message : "Não foi possível inativar o usuário."),
+    });
+
+    setIsDeleteDialogOpen(false);
+    setSelectedUsuario(null);
+    await loadUsuarios();
+  };
+
+  const handleCriarUsuario = () => {
+    const perfilSelecionado = novoUsuario.perfil as UsuarioRoleUi;
+
+    const promise = criarUsuario({
+      nome: novoUsuario.nome,
+      email: novoUsuario.email,
+      perfil: perfilSelecionado,
+      departamento: novoUsuario.departamento,
+    });
+
+    void toast.promise(promise, {
+      loading: "Criando usuário no ACompra...",
+      success: ({ usuario, temporaryPassword }) => {
+        setUsuariosList((prev) => {
+          const next = [usuario, ...prev.filter((item) => item.id !== usuario.id)];
+          return next;
+        });
+        setNovoUsuario({ nome: "", email: "", perfil: "", departamento: "" });
+        setIsCreateDialogOpen(false);
+        return `Usuário ${usuario.nome} liberado. Senha temporária: ${temporaryPassword}`;
+      },
+      error: (error) => {
+        if (error instanceof Error) {
+          return error.message;
+        }
+
+        return "Não foi possível criar o usuário.";
+      },
+    });
+  };
+
+  const isSelfSelected = selectedUsuario?.id === currentUser?.id;
+  const shouldBlockRoleChange = isSelfSelected && currentProfile !== "admin" && perfilEdicao === "Administrador";
+
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-8">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl text-black">Usuários</h2>
           <p className="mt-1 text-gray-600">Gestão de usuários e permissões do sistema</p>
         </div>
-        <Dialog>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#003366] text-white hover:bg-[#002244]">
               <Plus className="mr-2" size={20} />
@@ -239,47 +288,44 @@ export default function UsuariosPage() {
             <div className="flex-1 overflow-y-auto px-6">
               <DialogHeader className="pt-6">
                 <DialogTitle>Criar Novo Usuário</DialogTitle>
-                <DialogDescription>
-                  Crie um novo usuário e defina suas permissões no sistema.
-                </DialogDescription>
+                <DialogDescription>Registre a criação do usuário e alinhe o convite no Auth do Supabase.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4 pb-6">
                 <div className="space-y-1.5">
-                  <Label htmlFor="nome">Nome Completo</Label>
-                  <Input id="nome" placeholder="Nome do usuário" />
+                  <Label htmlFor="novo-nome">Nome Completo</Label>
+                  <Input id="novo-nome" placeholder="Nome do usuário" value={novoUsuario.nome} onChange={(e) => setNovoUsuario((prev) => ({ ...prev, nome: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="email">E-mail</Label>
-                  <Input id="email" placeholder="usuario@sesc.com.br" type="email" />
+                  <Label htmlFor="novo-email">E-mail</Label>
+                  <Input id="novo-email" placeholder="usuario@sesc.com.br" type="email" value={novoUsuario.email} onChange={(e) => setNovoUsuario((prev) => ({ ...prev, email: e.target.value }))} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="perfil">Perfil de Acesso</Label>
-                  <Select>
-                    <SelectTrigger id="perfil">
+                  <Label htmlFor="novo-perfil">Perfil de Acesso</Label>
+                  <Select value={novoUsuario.perfil} onValueChange={(value) => setNovoUsuario((prev) => ({ ...prev, perfil: value }))}>
+                    <SelectTrigger id="novo-perfil">
                       <SelectValue placeholder="Selecione o perfil" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="administrador">Administrador</SelectItem>
-                      <SelectItem value="comprador/responsavel">Comprador/Responsável</SelectItem>
-                      <SelectItem value="requisitante/visualizador">Requisitante/Visualizador</SelectItem>
-                      <SelectItem value="gestor de contratos">Gestor de Contratos</SelectItem>
+                      {perfisDisponiveis.map((perfil) => (
+                        <SelectItem key={perfil} value={perfil}>
+                          {perfil}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="departamento">Departamento</Label>
-                  <Select>
-                    <SelectTrigger id="departamento">
+                  <Label htmlFor="novo-departamento">Departamento</Label>
+                  <Select value={novoUsuario.departamento} onValueChange={(value) => setNovoUsuario((prev) => ({ ...prev, departamento: value }))}>
+                    <SelectTrigger id="novo-departamento">
                       <SelectValue placeholder="Selecione o departamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="diretoria">Diretoria</SelectItem>
-                      <SelectItem value="tecnologia">Tecnologia</SelectItem>
-                      <SelectItem value="saude">Saúde</SelectItem>
-                      <SelectItem value="eventos">Eventos</SelectItem>
-                      <SelectItem value="suprimentos">Suprimentos</SelectItem>
-                      <SelectItem value="gestao-contratos">Gestão de Contratos</SelectItem>
-                      <SelectItem value="juridico">Jurídico</SelectItem>
+                      {departamentosDisponiveis.map((departamento) => (
+                        <SelectItem key={departamento} value={departamento}>
+                          {departamento}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -291,7 +337,11 @@ export default function UsuariosPage() {
                   Cancelar
                 </Button>
               </DialogClose>
-              <Button className="flex-1 bg-[#003366] text-white hover:bg-[#002244]">
+              <Button
+                className="flex-1 bg-[#003366] text-white hover:bg-[#002244]"
+                onClick={handleCriarUsuario}
+                disabled={!novoUsuario.nome.trim() || !novoUsuario.email.trim() || !novoUsuario.perfil || !novoUsuario.departamento}
+              >
                 Criar Usuário
               </Button>
             </DialogFooter>
@@ -300,97 +350,13 @@ export default function UsuariosPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-        <Card className="border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-lg bg-blue-100 p-2">
-                <Users className="text-blue-600" size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-2xl text-black">{statusCounts.todos}</p>
-                <p className="truncate text-sm text-gray-600" title="Total">Total</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-lg bg-red-100 p-2">
-                <Shield className="text-red-600" size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-2xl text-red-600">{statusCounts.administrador}</p>
-                <p className="truncate text-sm text-gray-600" title="Administradores">Administradores</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-lg bg-blue-100 p-2">
-                <ShoppingCart className="text-blue-600" size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-2xl text-blue-600">{statusCounts.compradorResponsavel}</p>
-                <p className="truncate text-sm text-gray-600" title="Comprador/Responsável">Comprador/Responsável</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-lg bg-gray-100 p-2">
-                <Users className="text-gray-600" size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-2xl text-gray-600">{statusCounts.requisitanteVisualizador}</p>
-                <p className="truncate text-sm text-gray-600" title="Requisitante/Visualizador">Requisitante/Visualizador</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-lg bg-purple-100 p-2">
-                <FileSignature className="text-purple-600" size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-2xl text-purple-600">{statusCounts.gestorContratos}</p>
-                <p className="truncate text-sm text-gray-600" title="Gestor de Contratos">Gestor de Contratos</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-lg bg-green-100 p-2">
-                <UserCheck className="text-green-600" size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-2xl text-green-600">{statusCounts.ativos}</p>
-                <p className="truncate text-sm text-gray-600" title="Ativos">Ativos</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border border-gray-200">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="shrink-0 rounded-lg bg-red-100 p-2">
-                <UserX className="text-red-600" size={20} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-2xl text-red-600">{statusCounts.inativos}</p>
-                <p className="truncate text-sm text-gray-600" title="Inativos">Inativos</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="shrink-0 rounded-lg bg-blue-100 p-2"><Users className="text-blue-600" size={20} /></div><div className="min-w-0 flex-1"><p className="text-2xl text-black">{statusCounts.todos}</p><p className="truncate text-sm text-gray-600">Total</p></div></div></CardContent></Card>
+        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="shrink-0 rounded-lg bg-red-100 p-2"><Shield className="text-red-600" size={20} /></div><div className="min-w-0 flex-1"><p className="text-2xl text-red-600">{statusCounts.administrador}</p><p className="truncate text-sm text-gray-600">Administradores</p></div></div></CardContent></Card>
+        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="shrink-0 rounded-lg bg-blue-100 p-2"><ShoppingCart className="text-blue-600" size={20} /></div><div className="min-w-0 flex-1"><p className="text-2xl text-blue-600">{statusCounts.compradorResponsavel}</p><p className="truncate text-sm text-gray-600">Comprador/Responsável</p></div></div></CardContent></Card>
+        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="shrink-0 rounded-lg bg-gray-100 p-2"><Users className="text-gray-600" size={20} /></div><div className="min-w-0 flex-1"><p className="text-2xl text-gray-600">{statusCounts.requisitanteVisualizador}</p><p className="truncate text-sm text-gray-600">Requisitante/Visualizador</p></div></div></CardContent></Card>
+        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="shrink-0 rounded-lg bg-purple-100 p-2"><FileSignature className="text-purple-600" size={20} /></div><div className="min-w-0 flex-1"><p className="text-2xl text-purple-600">{statusCounts.gestorContratos}</p><p className="truncate text-sm text-gray-600">Gestor de Contratos</p></div></div></CardContent></Card>
+        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="shrink-0 rounded-lg bg-green-100 p-2"><UserCheck className="text-green-600" size={20} /></div><div className="min-w-0 flex-1"><p className="text-2xl text-green-600">{statusCounts.ativos}</p><p className="truncate text-sm text-gray-600">Ativos</p></div></div></CardContent></Card>
+        <Card className="border border-gray-200"><CardContent className="p-4"><div className="flex items-center gap-3"><div className="shrink-0 rounded-lg bg-red-100 p-2"><UserX className="text-red-600" size={20} /></div><div className="min-w-0 flex-1"><p className="text-2xl text-red-600">{statusCounts.inativos}</p><p className="truncate text-sm text-gray-600">Inativos</p></div></div></CardContent></Card>
       </div>
 
       <Card className="border border-gray-200">
@@ -399,19 +365,12 @@ export default function UsuariosPage() {
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                <Input
-                  className="pl-10"
-                  placeholder="Buscar por nome, e-mail ou departamento..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+                <Input className="pl-10" placeholder="Buscar por nome, e-mail ou departamento..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
             </div>
             <div className="w-full md:w-48">
               <Select value={perfilFilter} onValueChange={setPerfilFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filtrar por perfil" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Filtrar por perfil" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os Perfis</SelectItem>
                   <SelectItem value="administrador">Administrador</SelectItem>
@@ -423,9 +382,7 @@ export default function UsuariosPage() {
             </div>
             <div className="w-full md:w-48">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filtrar por status" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Filtrar por status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os Status</SelectItem>
                   <SelectItem value="ativo">Ativo</SelectItem>
@@ -446,207 +403,135 @@ export default function UsuariosPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableTableHead
-                    label="Nome"
-                    onClick={() => sortUsuarios("nome")}
-                    currentDirection={configUsuarios?.key === "nome" ? configUsuarios.direction : null}
-                    className="sticky left-0 z-10 min-w-[180px] bg-white"
-                  />
-                  <SortableTableHead
-                    label="E-mail"
-                    onClick={() => sortUsuarios("email")}
-                    currentDirection={configUsuarios?.key === "email" ? configUsuarios.direction : null}
-                    className="min-w-[220px]"
-                  />
-                  <SortableTableHead
-                    label="Perfil"
-                    onClick={() => sortUsuarios("perfil")}
-                    currentDirection={configUsuarios?.key === "perfil" ? configUsuarios.direction : null}
-                    className="min-w-[140px]"
-                  />
-                  <SortableTableHead
-                    label="Status"
-                    onClick={() => sortUsuarios("status")}
-                    currentDirection={configUsuarios?.key === "status" ? configUsuarios.direction : null}
-                    className="min-w-[100px]"
-                  />
-                  <SortableTableHead
-                    label="Departamento"
-                    onClick={() => sortUsuarios("departamento")}
-                    currentDirection={configUsuarios?.key === "departamento" ? configUsuarios.direction : null}
-                    className="min-w-[160px]"
-                  />
-                  <SortableTableHead
-                    label="Último Acesso"
-                    onClick={() => sortUsuarios("ultimoAcesso")}
-                    currentDirection={configUsuarios?.key === "ultimoAcesso" ? configUsuarios.direction : null}
-                    className="min-w-[160px]"
-                  />
+                  <SortableTableHead label="Nome" onClick={() => sortUsuarios("nome")} currentDirection={configUsuarios?.key === "nome" ? configUsuarios.direction : null} className="sticky left-0 z-10 min-w-[180px] bg-white" />
+                  <SortableTableHead label="E-mail" onClick={() => sortUsuarios("email")} currentDirection={configUsuarios?.key === "email" ? configUsuarios.direction : null} className="min-w-[220px]" />
+                  <SortableTableHead label="Perfil" onClick={() => sortUsuarios("perfil")} currentDirection={configUsuarios?.key === "perfil" ? configUsuarios.direction : null} className="min-w-[140px]" />
+                  <SortableTableHead label="Status" onClick={() => sortUsuarios("status")} currentDirection={configUsuarios?.key === "status" ? configUsuarios.direction : null} className="min-w-[100px]" />
+                  <SortableTableHead label="Departamento" onClick={() => sortUsuarios("departamento")} currentDirection={configUsuarios?.key === "departamento" ? configUsuarios.direction : null} className="min-w-[160px]" />
+                  <SortableTableHead label="Último Acesso" onClick={() => sortUsuarios("ultimoAcesso")} currentDirection={configUsuarios?.key === "ultimoAcesso" ? configUsuarios.direction : null} className="min-w-[160px]" />
                   <TableHead className="min-w-[120px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedUsuarios.map((usuario) => {
-                  const perfilSelecionado = perfilEdicaoPorUsuario[usuario.id] ?? usuario.perfil;
-                  const departamentoSelecionado = departamentoEdicaoPorUsuario[usuario.id] ?? usuario.departamento;
-                  const statusSelecionado = statusEdicaoPorUsuario[usuario.id] ?? usuario.status;
-
-                  return (
-                  <TableRow key={usuario.id}>
-                    <TableCell className="sticky left-0 z-10 text-black bg-white">{usuario.nome}</TableCell>
-                    <TableCell className="text-gray-600">{usuario.email}</TableCell>
-                    <TableCell>
-                      <BadgeStatus size="sm" {...getBadgeMappingForPerfil(usuario.perfil)}>
-                        {usuario.perfil}
-                      </BadgeStatus>
-                    </TableCell>
-                    <TableCell>
-                      <BadgeStatus size="sm" {...getBadgeMappingForStatus(usuario.status)}>
-                        {usuario.status}
-                      </BadgeStatus>
-                    </TableCell>
-                    <TableCell className="text-gray-600">{usuario.departamento}</TableCell>
-                    <TableCell className="text-gray-600">{usuario.ultimoAcesso}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="outline">
-                              <Edit size={16} />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-h-[85vh] max-w-lg p-0">
-                            <div className="flex-1 overflow-y-auto px-6">
-                              <DialogHeader className="pt-6">
-                                <DialogTitle>Editar Usuário - {usuario.nome}</DialogTitle>
-                                <DialogDescription>
-                                  Edite o perfil e permissões do usuário selecionado.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="grid gap-4 py-4 pb-6">
-                                <div className="space-y-1.5">
-                                  <Label>Perfil de Acesso</Label>
-                                  <Select
-                                    value={perfilSelecionado}
-                                    onValueChange={(value) =>
-                                      setPerfilEdicaoPorUsuario((prev) => ({ ...prev, [usuario.id]: value as PerfilUsuario }))
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Administrador">Administrador</SelectItem>
-                                      <SelectItem value="Comprador/Responsável">Comprador/Responsável</SelectItem>
-                                      <SelectItem value="Requisitante/Visualizador">Requisitante/Visualizador</SelectItem>
-                                      <SelectItem value="Gestor de Contratos">Gestor de Contratos</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>Departamento</Label>
-                                  <Select
-                                    value={departamentoSelecionado}
-                                    onValueChange={(value) =>
-                                      setDepartamentoEdicaoPorUsuario((prev) => ({ ...prev, [usuario.id]: value }))
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      {departamentosDisponiveis.map((departamento) => (
-                                        <SelectItem key={departamento} value={departamento}>
-                                          {departamento}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>Status</Label>
-                                  <Select
-                                    value={statusSelecionado}
-                                    onValueChange={(value) =>
-                                      setStatusEdicaoPorUsuario((prev) => ({ ...prev, [usuario.id]: value as StatusUsuario }))
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Ativo">Ativo</SelectItem>
-                                      <SelectItem value="Inativo">Inativo</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>Permissões do Perfil {perfilSelecionado}:</Label>
-                                  <div className="mt-2 space-y-2">
-                                    {permissoesPorPerfil[perfilSelecionado].map((permissao) => (
-                                      <div key={permissao} className="flex items-center gap-2 text-sm text-gray-600">
-                                        <div className="h-2 w-2 rounded-full bg-blue-500" />
-                                        {permissao}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            <DialogFooter className="flex gap-2 rounded-b-[8px] border-t bg-white px-6 pb-4 pt-4">
-                              <DialogClose asChild>
-                                <Button className="flex-1" variant="outline">
-                                  Cancelar
-                                </Button>
-                              </DialogClose>
-                              <DialogClose asChild>
-                                <Button
-                                  className="flex-1 bg-[#003366] text-white hover:bg-[#002244]"
-                                  onClick={() => handleSalvarAlteracoes(usuario.id)}
-                                >
-                                  Salvar Alterações
-                                </Button>
-                              </DialogClose>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                              size="sm"
-                              variant="outline"
-                            >
-                              <Trash2 size={16} />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Tem certeza que deseja excluir o usuário <strong>{usuario.nome}</strong>? Esta ação
-                                não pode ser desfeita.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction className="bg-red-600 text-white hover:bg-red-700">
-                                Excluir Usuário
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-gray-500">Carregando usuários reais do Supabase...</TableCell>
                   </TableRow>
-                  );
-                })}
+                ) : sortedUsuarios.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-gray-500">Nenhum usuário encontrado para os filtros selecionados.</TableCell>
+                  </TableRow>
+                ) : (
+                  sortedUsuarios.map((usuario) => (
+                    <TableRow key={usuario.id}>
+                      <TableCell className="sticky left-0 z-10 bg-white text-black">{usuario.nome}</TableCell>
+                      <TableCell className="text-gray-600">{usuario.email}</TableCell>
+                      <TableCell><BadgeStatus size="sm" {...getBadgeMappingForPerfil(usuario.perfil)}>{usuario.perfil}</BadgeStatus></TableCell>
+                      <TableCell><BadgeStatus size="sm" {...getBadgeMappingForStatus(usuario.status)}>{usuario.status}</BadgeStatus></TableCell>
+                      <TableCell className="text-gray-600">{usuario.departamento}</TableCell>
+                      <TableCell className="text-gray-600">{usuario.ultimoAcesso}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openEditDialog(usuario)}>
+                            <Edit size={16} />
+                          </Button>
+                          <Button className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" size="sm" variant="outline" onClick={() => openDeleteDialog(usuario)}>
+                            <UserX size={16} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-h-[85vh] max-w-lg p-0">
+          <div className="flex-1 overflow-y-auto px-6">
+            <DialogHeader className="pt-6">
+              <DialogTitle>Editar Usuário - {selectedUsuario?.nome}</DialogTitle>
+              <DialogDescription>Edite o perfil e permissões do usuário selecionado.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4 pb-6">
+              <div className="space-y-1.5">
+                <Label>Perfil de Acesso</Label>
+                <Select value={perfilEdicao} onValueChange={(value) => setPerfilEdicao(value as UsuarioRoleUi)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {perfisDisponiveis.map((perfil) => (
+                      <SelectItem key={perfil} value={perfil} disabled={selectedUsuario?.id === currentUser?.id && perfil === "Administrador" && currentProfile !== "admin"}>
+                        {perfil}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {shouldBlockRoleChange && <p className="text-xs text-red-600">Não é permitido elevar o próprio usuário para administrador.</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Departamento</Label>
+                <Select value={departamentoEdicao} onValueChange={setDepartamentoEdicao}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {departamentosDisponiveis.map((departamento) => (
+                      <SelectItem key={departamento} value={departamento}>{departamento}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={statusEdicao} onValueChange={(value) => setStatusEdicao(value as UsuarioStatusUi)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Ativo">Ativo</SelectItem>
+                    <SelectItem value="Inativo">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Permissões do Perfil {perfilEdicao}:</Label>
+                <div className="mt-2 space-y-2">
+                  {permissoesPorPerfil[perfilEdicao].map((permissao) => (
+                    <div key={permissao} className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="h-2 w-2 rounded-full bg-blue-500" />
+                      {permissao}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 rounded-b-[8px] border-t bg-white px-6 pb-4 pt-4">
+            <DialogClose asChild>
+              <Button className="flex-1" variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button className="flex-1 bg-[#003366] text-white hover:bg-[#002244]" onClick={() => void handleSalvarAlteracoes()} disabled={shouldBlockRoleChange}>
+              Salvar Alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Inativação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja inativar o usuário <strong>{selectedUsuario?.nome}</strong>? O perfil será mantido para histórico e joins, mas deixará de aparecer como ativo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 text-white hover:bg-red-700" onClick={() => void handleDeleteUsuario()}>
+              Inativar Usuário
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

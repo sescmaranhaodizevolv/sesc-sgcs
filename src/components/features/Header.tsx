@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, ChevronDown, LogOut, Menu, Search, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +54,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   const unreadCount = useMemo(() => notifications.filter((notification) => !notification.lida).length, [notifications]);
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     if (!currentUser?.id) {
       setNotifications([]);
       return;
@@ -66,11 +66,11 @@ export function Header({ onMenuClick }: HeaderProps) {
     } catch {
       setNotifications([]);
     }
-  };
+  }, [currentUser?.id]);
 
   useEffect(() => {
     void loadNotifications();
-  }, [currentUser?.id]);
+  }, [loadNotifications]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -94,7 +94,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [currentUser?.id, supabase]);
+  }, [currentUser?.id, loadNotifications, supabase]);
 
   const handleLogout = () => {
     void logout();
@@ -120,9 +120,14 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Menu size={20} />
         </Button>
 
+        <div className="hidden lg:block min-w-[220px]">
+          <p className="text-sm font-semibold text-sesc-blue">ACompra</p>
+          <p className="text-xs text-gray-500">Gestão de Compras SESC</p>
+        </div>
+
         <div className="hidden md:flex items-center gap-2 relative">
           <Search size={16} className="absolute left-3 text-gray-400" />
-          <Input placeholder="Buscar..." className="pl-9 w-64 h-9" />
+          <Input placeholder="Buscar no ACompra..." className="pl-9 w-64 h-9" />
         </div>
       </div>
 

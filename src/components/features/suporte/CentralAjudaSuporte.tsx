@@ -84,12 +84,12 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const podeAbrirChamado = currentProfile === 'requisitante' || currentProfile === 'comprador';
   const podeResponderChamado = currentProfile === 'admin' || currentProfile === 'comprador';
   const podeGerenciarFaq: boolean = currentProfile === 'admin';
-  const usuarioLogado = currentProfile === 'requisitante' ? 'João Silva' : currentProfile === 'comprador' ? 'Comprador' : currentProfile === 'gestora' ? 'Gestora' : 'Admin';
+  const usuarioLogado = currentProfile === 'requisitante' ? 'Usuário autenticado' : currentProfile === 'comprador' ? 'Comprador' : currentProfile === 'gestora' ? 'Gestora' : 'Admin';
 
   const chamadosRecentes = [
     {
       id: 1,
-      numero: 'SUP-2024-001',
+      numero: 'Atendimento registrado',
       titulo: 'Erro ao Exportar Relatório de Processos',
       categoria: 'Sistema',
       prioridade: 'Alta',
@@ -102,7 +102,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     },
     {
       id: 2,
-      numero: 'SUP-2024-002',
+      numero: 'Em acompanhamento',
       titulo: 'Dúvida sobre Prorrogação de Contrato',
       categoria: 'Dúvida',
       prioridade: 'Média',
@@ -115,7 +115,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     },
     {
       id: 3,
-      numero: 'SUP-2024-003',
+      numero: 'Resolvido pelo suporte',
       titulo: 'Solicitação de Novo Usuário',
       categoria: 'Acesso/Perfil',
       prioridade: 'Baixa',
@@ -132,8 +132,8 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
 
   const meusChamados = [
     {
-      id: 'CH-2025-045',
-      titulo: 'RC-2024-1234 parada há 15 dias',
+      id: 'chamado-recente-1',
+      titulo: 'Requisição parada há 15 dias',
       categoria: 'Processo Parado',
       prioridade: 'Alta',
       status: 'Em Análise',
@@ -141,7 +141,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
       ultimaAtualizacao: '03/11/2025'
     },
     {
-      id: 'CH-2025-032',
+      id: 'chamado-recente-2',
       titulo: 'Dúvida sobre anexo de especificação técnica',
       categoria: 'Dúvida',
       prioridade: 'Média',
@@ -150,8 +150,8 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
       ultimaAtualizacao: '30/10/2025'
     },
     {
-      id: 'CH-2025-018',
-      titulo: 'Solicitação de cancelamento RC-2024-987',
+      id: 'chamado-recente-3',
+      titulo: 'Solicitação de cancelamento de requisição',
       categoria: 'Cancelamento',
       prioridade: 'Média',
       status: 'Resolvido',
@@ -159,7 +159,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
       ultimaAtualizacao: '22/10/2025'
     },
     {
-      id: 'CH-2025-009',
+      id: 'chamado-recente-4',
       titulo: 'Erro ao visualizar histórico da RC',
       categoria: 'Problema Técnico',
       prioridade: 'Baixa',
@@ -229,7 +229,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     setChamadoAberto(true);
     setTimeout(() => {
       setChamadoAberto(false);
-      alert('Chamado aberto com sucesso! Número: SUP-2024-004');
+      alert('Chamado aberto com sucesso! O identificador será exibido após a confirmação do suporte.');
     }, 1000);
   };
 
@@ -346,6 +346,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   };
 
   const salvarNovoFaq = async () => {
+    if (!podeGerenciarFaq) return;
     if (!novaPergunta.trim() || !novaResposta.trim() || !novaCategoria) return;
 
     try {
@@ -385,6 +386,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   };
 
   const abrirModalNovoFaq = () => {
+    if (!podeGerenciarFaq) return;
     setFaqEmEdicao(null);
     setNovaPergunta('');
     setNovaResposta('');
@@ -393,6 +395,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   };
 
   const abrirModalEdicao = (faq: FaqItem) => {
+    if (!podeGerenciarFaq) return;
     setFaqEmEdicao(faq.id);
     setNovaPergunta(faq.pergunta);
     setNovaResposta(faq.resposta);
@@ -401,6 +404,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   };
 
   const excluirFaq = async (id: string) => {
+    if (!podeGerenciarFaq) return;
     try {
       await deleteFaq(id);
       setFaqs((prev) => prev.filter((faq) => faq.id !== id));
@@ -471,7 +475,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="chamado-rc">RC Relacionada (Opcional)</Label>
-                      <Input id="chamado-rc" placeholder="Ex: RC-2024-1234" />
+                      <Input id="chamado-rc" placeholder="Informe o número da RC, se houver" />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="chamado-descricao">Descrição Detalhada *</Label>
@@ -1344,10 +1348,12 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                   <HelpCircle size={20} className="text-[#003366]" />
                   Perguntas Frequentes (FAQ)
                 </CardTitle>
-                <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={abrirModalNovoFaq}>
-                  <Plus size={16} className="mr-2" />
-                  Cadastrar FAQ
-                </Button>
+                {podeGerenciarFaq && (
+                  <Button className="bg-[#003366] hover:bg-[#002244] text-white" onClick={abrirModalNovoFaq}>
+                    <Plus size={16} className="mr-2" />
+                    Cadastrar FAQ
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <Dialog open={isNovoFaqOpen} onOpenChange={setIsNovoFaqOpen}>

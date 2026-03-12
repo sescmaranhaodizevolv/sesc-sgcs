@@ -63,7 +63,7 @@ function formatCurrency(value?: number | null) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function formatReadableCode(primary?: string | null, fallback?: string | null, prefix = "GCON") {
+function formatReadableCode(primary?: string | null, fallback?: string | null, prefix = "ACompra") {
   if (primary && primary.trim()) return primary;
   if (!fallback || !fallback.trim()) return "-";
   if (/^\d+$/.test(fallback.trim())) return `${prefix}-${fallback.padStart(4, "0")}`;
@@ -264,7 +264,7 @@ export default function GestaoContratosPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="cont-processo">Numero do Processo *</Label>
-                    <Input id="cont-processo" placeholder="PROC-2024-XXX" />
+                    <Input id="cont-processo" placeholder="Informe o número real do processo vinculado" />
                   </div>
                 </div>
 
