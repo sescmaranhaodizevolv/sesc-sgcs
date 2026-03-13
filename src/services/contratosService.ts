@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { enviarNotificacao } from "@/services/notificacoesService";
+import type { RelatorioFiltros } from "@/types";
+import { deleteDocumento, getDocumentos, uploadDocumento, type DocumentoItem } from "@/services/documentosService";
 
 function getErrorMessage(error: { message?: string | null; details?: string | null }) {
   return error.details || error.message || "Ocorreu um erro ao processar a solicitacao";
@@ -79,6 +81,7 @@ export interface HistoricoProrrogacao {
 export interface Realinhamento {
   id: string;
   contrato_id: string | null;
+  documento_id?: string | null;
   item: string;
   valor_original: number;
   valor_solicitado: number;
@@ -93,6 +96,15 @@ export interface Realinhamento {
     fornecedor?: { razao_social: string | null; cnpj: string | null } | null;
   } | null;
   responsavel?: { nome: string | null } | null;
+}
+
+export interface RealinhamentoAnexo {
+  id: string;
+  nome: string;
+  tamanho: string;
+  data_upload: string;
+  tipo: string;
+  url_assinada: string;
 }
 
 export interface CreateContratoPayload {
@@ -119,6 +131,7 @@ export interface CreateProrrogacaoPayload {
 
 export interface CreateRealinhamentoPayload {
   contrato_id: string;
+  documento_id?: string | null;
   item: string;
   valor_original: number;
   valor_solicitado: number;
@@ -126,13 +139,27 @@ export interface CreateRealinhamentoPayload {
   responsavel_id?: string | null;
 }
 
-export async function getContratos(): Promise<Contrato[]> {
+export async function getContratos(filtros?: RelatorioFiltros): Promise<Contrato[]> {
   const supabase = createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("contratos")
-    .select(CONTRATOS_SELECT)
-    .order("criado_em", { ascending: false });
+    .select(CONTRATOS_SELECT);
+
+  if (filtros) {
+    if (filtros.status && filtros.status !== "todos") {
+      query = query.eq("status", filtros.status);
+    }
+    const campoData = filtros.tipoData || "criado_em";
+    if (filtros.dataInicio) {
+      query = query.gte(campoData, filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      query = query.lte(campoData, filtros.dataFim);
+    }
+  }
+
+  const { data, error } = await query.order("criado_em", { ascending: false });
 
   if (error) {
     throw new Error(getErrorMessage(error));
@@ -190,19 +217,31 @@ export async function updateContrato(id: string, dados: Partial<CreateContratoPa
   return data as Contrato;
 }
 
-export async function getProrrogacoes(contratoId?: string): Promise<Prorrogacao[]> {
+export async function getProrrogacoes(contratoId?: string, filtros?: RelatorioFiltros): Promise<Prorrogacao[]> {
   const supabase = createClient();
 
   let query = supabase
     .from("prorrogacoes")
-    .select(PRORROGACOES_SELECT)
-    .order("data_solicitacao", { ascending: false });
+    .select(PRORROGACOES_SELECT);
 
   if (contratoId) {
     query = query.eq("contrato_id", contratoId);
   }
 
-  const { data, error } = await query;
+  if (filtros) {
+    if (filtros.status && filtros.status !== "todos") {
+      query = query.eq("status", filtros.status);
+    }
+    const campoData = filtros.tipoData || "data_solicitacao";
+    if (filtros.dataInicio) {
+      query = query.gte(campoData, filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      query = query.lte(campoData, filtros.dataFim);
+    }
+  }
+
+  const { data, error } = await query.order("data_solicitacao", { ascending: false });
 
   if (error) {
     throw new Error(getErrorMessage(error));
@@ -345,13 +384,31 @@ export async function rejeitarProrrogacao(prorrogacaoId: string): Promise<Prorro
 export async function getHistoricoProrrogacoes(contratoId?: string): Promise<HistoricoProrrogacao[]> {
   const supabase = createClient();
 
-  let query = supabase
-    .from("historico_prorrogacoes")
-    .select(HISTORICO_PRORROGACOES_SELECT)
-    .order("criado_em", { ascending: false });
+  let prorrogacaoIds: string[] | null = null;
 
   if (contratoId) {
-    query = query.eq("prorrogacao.contrato_id", contratoId);
+    const { data: prorrogacoes, error: prorrogacoesError } = await supabase
+      .from("prorrogacoes")
+      .select("id")
+      .eq("contrato_id", contratoId);
+
+    if (prorrogacoesError) {
+      throw new Error(getErrorMessage(prorrogacoesError));
+    }
+
+    prorrogacaoIds = (prorrogacoes ?? []).map((item) => item.id as string);
+    if (prorrogacaoIds.length === 0) {
+      return [];
+    }
+  }
+
+  let query = supabase
+    .from("historico_prorrogacoes")
+    .select("*")
+    .order("criado_em", { ascending: false });
+
+  if (prorrogacaoIds) {
+    query = query.in("prorrogacao_id", prorrogacaoIds);
   }
 
   const { data, error } = await query;
@@ -360,22 +417,64 @@ export async function getHistoricoProrrogacoes(contratoId?: string): Promise<His
     throw new Error(getErrorMessage(error));
   }
 
-  return (data ?? []) as HistoricoProrrogacao[];
+  const rows = (data ?? []) as HistoricoProrrogacao[];
+  const ids = Array.from(new Set(rows.map((row) => row.prorrogacao_id).filter((value): value is string => Boolean(value))));
+
+  if (ids.length === 0) {
+    return rows;
+  }
+
+  const { data: prorrogacoesRelacionadas, error: relaciondasError } = await supabase
+    .from("prorrogacoes")
+    .select("id, contrato_id, nova_data_fim, status")
+    .in("id", ids);
+
+  if (relaciondasError) {
+    throw new Error(getErrorMessage(relaciondasError));
+  }
+
+  const prorrogacoesMap = new Map(
+    (prorrogacoesRelacionadas ?? []).map((item) => [
+      item.id as string,
+      {
+        contrato_id: item.contrato_id as string | null,
+        nova_data_fim: item.nova_data_fim as string | null,
+        status: item.status as string | null,
+      },
+    ]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    prorrogacao: row.prorrogacao_id ? prorrogacoesMap.get(row.prorrogacao_id) || null : null,
+  }));
 }
 
-export async function getRealinhamentos(contratoId?: string): Promise<Realinhamento[]> {
+export async function getRealinhamentos(contratoId?: string, filtros?: RelatorioFiltros): Promise<Realinhamento[]> {
   const supabase = createClient();
 
   let query = supabase
     .from("realinhamentos")
-    .select(REALINHAMENTOS_SELECT)
-    .order("data_solicitacao", { ascending: false });
+    .select(REALINHAMENTOS_SELECT);
 
   if (contratoId) {
     query = query.eq("contrato_id", contratoId);
   }
 
-  const { data, error } = await query;
+  if (filtros) {
+    if (filtros.status && filtros.status !== "todos") {
+      query = query.eq("status", filtros.status);
+    }
+    const campoData = filtros.tipoData || "data_solicitacao";
+    if (filtros.dataInicio) {
+      query = query.gte(campoData, filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      query = query.lte(campoData, filtros.dataFim);
+    }
+  }
+
+  const { data, error } = await query.order("data_solicitacao", { ascending: false });
 
   if (error) {
     throw new Error(getErrorMessage(error));
@@ -424,4 +523,89 @@ export async function updateRealinhamentoStatus(
   }
 
   return data as Realinhamento;
+}
+
+function formatDocumentSize(size?: number | null) {
+  if (!size || Number.isNaN(size)) return "0 KB";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getRealinhamentoDocumentTag(realinhamentoId: string) {
+  return `[realinhamento:${realinhamentoId}]`;
+}
+
+export async function getRealinhamentoAnexos(realinhamentoId: string): Promise<RealinhamentoAnexo[]> {
+  const documentos = await getDocumentos({ tipo: "Realinhamento" });
+
+  return documentos
+    .filter((documento) => documento.descricao?.includes(getRealinhamentoDocumentTag(realinhamentoId)))
+    .map((documento) => ({
+      id: documento.id,
+      nome: documento.nome_arquivo,
+      tamanho: formatDocumentSize(documento.tamanho_bytes),
+      data_upload: new Date(documento.criado_em).toLocaleDateString("pt-BR"),
+      tipo: documento.tipo_conteudo || documento.tipo || "Arquivo",
+      url_assinada: documento.url_assinada,
+    }));
+}
+
+export async function uploadAnexoRealinhamento(realinhamentoId: string, file: File, userId: string): Promise<RealinhamentoAnexo> {
+  const supabase = createClient();
+  const { data: realinhamento, error } = await supabase
+    .from("realinhamentos")
+    .select("id, contrato_id, contrato:contratos(numero_contrato, processo_id, fornecedor_id, fornecedor:fornecedores(razao_social))")
+    .eq("id", realinhamentoId)
+    .single();
+
+  if (error) {
+    throw new Error(getErrorMessage(error));
+  }
+
+  const contrato = realinhamento.contrato as {
+    numero_contrato?: string | null;
+    processo_id?: string | null;
+    fornecedor_id?: string | null;
+    fornecedor?: { razao_social?: string | null } | null;
+  } | null;
+
+  const documento = await uploadDocumento(
+    file,
+    {
+      fornecedor_id: contrato?.fornecedor_id ?? null,
+      processo_id: contrato?.processo_id ?? null,
+      empresa: contrato?.fornecedor?.razao_social || "Fornecedor não identificado",
+      processo: contrato?.numero_contrato || realinhamentoId,
+      tipo: "Realinhamento",
+      categoria: "Realinhamento",
+      periodo: new Date().toISOString().slice(0, 7),
+      palavras_chave: ["realinhamento", contrato?.numero_contrato || realinhamentoId],
+      descricao: `${getRealinhamentoDocumentTag(realinhamentoId)} Documento anexado ao realinhamento`,
+      titulo: `Realinhamento ${contrato?.numero_contrato || realinhamentoId}`,
+    },
+    userId,
+  );
+
+  const { error: updateError } = await supabase
+    .from("realinhamentos")
+    .update({ documento_id: documento.id })
+    .eq("id", realinhamentoId);
+
+  if (updateError) {
+    throw new Error(getErrorMessage(updateError));
+  }
+
+  return {
+    id: documento.id,
+    nome: documento.nome_arquivo,
+    tamanho: formatDocumentSize(documento.tamanho_bytes),
+    data_upload: new Date(documento.criado_em).toLocaleDateString("pt-BR"),
+    tipo: documento.tipo_conteudo || documento.tipo || "Arquivo",
+    url_assinada: documento.url_assinada,
+  };
+}
+
+export async function deleteAnexoRealinhamento(anexoId: string): Promise<void> {
+  await deleteDocumento(anexoId);
 }

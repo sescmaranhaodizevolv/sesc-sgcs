@@ -3,6 +3,15 @@
 // Interfaces derivadas do PRD e do protótipo Figma Make
 // ============================================================
 
+/** Filtros globais para relatórios no servidor */
+export interface RelatorioFiltros {
+    status?: string | "todos";
+    categoria?: string | "todas";
+    dataInicio?: string;
+    dataFim?: string;
+    tipoData?: string;
+}
+
 /** Perfis de usuário do sistema */
 export type UserProfile = "admin" | "comprador" | "requisitante" | "gestora";
 
@@ -110,6 +119,7 @@ export interface Processo {
     dataRecebimento?: string;
     dataFinalizacao?: string;
     dataEntrega?: string;
+    previsaoInicio?: string;
     dataAprovacao?: string;
     dataInicio?: string;
     dataFim?: string;
@@ -132,6 +142,7 @@ export interface Processo {
     data_recebimento?: string | null;
     data_finalizacao?: string | null;
     data_entrega?: string | null;
+    previsao_inicio?: string | null;
     data_inicio?: string | null;
     data_fim?: string | null;
     criado_em?: string;
@@ -196,7 +207,7 @@ export interface FornecedorCombobox {
 
 /** Penalidade aplicada a um fornecedor */
 export interface Penalidade {
-    id: number;
+    id: string;
     empresa: string;
     processo: string;
     penalidade: string;
@@ -213,7 +224,7 @@ export interface Penalidade {
 
 /** Realinhamento de preço de contrato */
 export interface Realinhamento {
-    id: number;
+    id: string;
     contrato: string;
     item: string;
     valorOriginal: string;
@@ -233,7 +244,7 @@ export interface HistoricoProrrogacao {
 
 /** Prorrogação de contrato */
 export interface Prorrogacao {
-    id: number;
+    id: string;
     empresa: string;
     contrato: string;
     objetoContrato: string;

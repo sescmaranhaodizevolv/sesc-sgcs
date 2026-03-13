@@ -1676,24 +1676,32 @@
       }
     };
 
-    const handleStatusConsolidadoChange = (
+    const handleStatusConsolidadoChange = async (
       numeroProcesso: string,
       novoStatus: StatusContratoComprador,
     ) => {
-      setProcessosRaw((prev) =>
-        prev.map((processo) =>
-          (processo.numero_requisicao || processo.id) === numeroProcesso
-            ? {
-                ...processo,
-                status: (novoStatus === "Em Renovação" ? "Próximo ao Vencimento" : novoStatus) as ProcessoComDetalhes["status"],
-              }
-            : processo,
-        ),
+      const processo = processosConsolidadosMapped.find(
+        (item) => item.numeroProcesso === numeroProcesso || item.numero_requisicao === numeroProcesso,
       );
 
-      toast.success("Ação simulada", {
-        description: `Status alterado para ${novoStatus}.`,
-      });
+      if (!processo) {
+        toast.error("Processo não encontrado para atualizar o status.");
+        return;
+      }
+
+      try {
+        await updateProcessoConsolidado(processo.id, {
+          status: novoStatus === "Em Renovação" ? "Próximo ao Vencimento" : novoStatus,
+        });
+        toast.success("Status atualizado com sucesso!", {
+          description: `Status alterado para ${novoStatus}.`,
+        });
+        await loadProcessos();
+      } catch (error) {
+        toast.error("Erro ao atualizar status", {
+          description: error instanceof Error ? error.message : "Não foi possível atualizar o status do consolidado.",
+        });
+      }
     };
 
     const handleVerDetalhes = (tipo: "diario" | "consolidado", item: any) => {
@@ -2328,7 +2336,7 @@
                       key={status}
                       className="flex-1 min-w-[280px]"
                       onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
+                      onDrop={async (e) => {
                         e.preventDefault();
                         const processoData = e.dataTransfer.getData("processo");
                         if (!processoData) return;
@@ -2338,7 +2346,10 @@
                           const canEditDraggedProcesso =
                             perfil === "admin" || draggedProcesso.responsavel === nomeUsuarioLogado;
                           if (canEditDraggedProcesso && draggedProcesso.status !== status) {
-                            handleIniciarMudancaStatus(draggedProcesso, status);
+                            const responsavelId = currentUser?.id ? String(currentUser.id) : null;
+                            await updateProcessoStatus(draggedProcesso.id, status, responsavelId);
+                            // Força recarregamento silêncioso ou espera webhook update
+                            void loadProcessos();
                           }
                         } catch {
                           toast.error("Falha ao mover card");

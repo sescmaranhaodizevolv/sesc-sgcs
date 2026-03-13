@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { enviarNotificacao } from "@/services/notificacoesService";
-import type { Processo, ProcessoComDetalhes, ProcessoTimeline } from "@/types";
+import type { Processo, ProcessoComDetalhes, ProcessoTimeline, RelatorioFiltros } from "@/types";
 
 export interface ProcessoAnexo {
   id: string;
@@ -49,6 +49,7 @@ export interface ProcessoPayload {
   data_recebimento?: string | null;
   data_finalizacao?: string | null;
   data_entrega?: string | null;
+  previsao_inicio?: string | null;
   data_inicio?: string | null;
   data_fim?: string | null;
 }
@@ -232,13 +233,30 @@ async function registrarTimelineAberturaRequisicao(params: {
   }
 }
 
-export async function getProcessos(): Promise<ProcessoComDetalhes[]> {
+export async function getProcessos(filtros?: RelatorioFiltros): Promise<ProcessoComDetalhes[]> {
   const supabase = createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("processos")
-    .select(PROCESSOS_SELECT)
-    .order("criado_em", { ascending: false });
+    .select(PROCESSOS_SELECT);
+
+  if (filtros) {
+    if (filtros.status && filtros.status !== "todos") {
+      query = query.eq("status", filtros.status);
+    }
+    if (filtros.categoria && filtros.categoria !== "todas") {
+      query = query.eq("categoria", filtros.categoria);
+    }
+    const campoData = filtros.tipoData || "criado_em";
+    if (filtros.dataInicio) {
+      query = query.gte(campoData, filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      query = query.lte(campoData, filtros.dataFim);
+    }
+  }
+
+  const { data, error } = await query.order("criado_em", { ascending: false });
 
   if (error) {
     throw new Error(getErrorMessage(error));

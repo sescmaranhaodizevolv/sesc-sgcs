@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,15 +31,18 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTableSort } from "@/hooks/useTableSort";
 import { SortableTableHead } from "@/components/ui/sortable-table-head";
-import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  deleteAnexoRealinhamento,
   getContratos,
+  getRealinhamentoAnexos,
   getRealinhamentos,
   solicitarRealinhamento,
+  uploadAnexoRealinhamento,
   updateRealinhamentoStatus,
   type Contrato,
   type Realinhamento,
+  type RealinhamentoAnexo,
 } from "@/services/contratosService";
 
 interface ItemRealinhamento {
@@ -56,6 +60,7 @@ interface AnexoDocumento {
   tipo: string;
   tamanho: string;
   dataUpload: string;
+  urlAssinada: string;
 }
 
 interface RealinhamentoData {
@@ -134,10 +139,17 @@ export function RealinhamentoPrecosModule() {
     setIsLoading(true);
     try {
       const [contratos, realinhamentos] = await Promise.all([getContratos(), getRealinhamentos()]);
+      const anexosPorRealinhamento = await Promise.all(
+        realinhamentos.map(async (realinhamento) => ({
+          id: realinhamento.id,
+          anexos: await getRealinhamentoAnexos(realinhamento.id),
+        })),
+      );
+      const anexosMap = new Map(anexosPorRealinhamento.map((item) => [item.id, item.anexos]));
       setContratosRaw(
         contratos.filter((contrato) => contrato.status === "Ativo" || contrato.status === "Próximo ao Vencimento"),
       );
-      setRealinhamentosRaw(realinhamentos);
+      setRealinhamentosRaw(realinhamentos.map((realinhamento) => ({ ...realinhamento, anexos: anexosMap.get(realinhamento.id) || [] })));
     } catch (error) {
       toast.error("Erro ao carregar realinhamentos", {
         description: error instanceof Error ? error.message : "Não foi possível carregar os dados.",
@@ -181,9 +193,16 @@ export function RealinhamentoPrecosModule() {
         dataSolicitacao: formatDate(realinhamento.data_solicitacao),
         responsavel: realinhamento.responsavel?.nome || "-",
         parecerGestao: realinhamento.parecer_gestao || "",
-        documentoAnexado: false,
-        nomeDocumento: null,
-        anexos: [],
+        documentoAnexado: ((realinhamento as Realinhamento & { anexos?: RealinhamentoAnexo[] }).anexos || []).length > 0,
+        nomeDocumento: ((realinhamento as Realinhamento & { anexos?: RealinhamentoAnexo[] }).anexos || [])[0]?.nome || null,
+        anexos: (((realinhamento as Realinhamento & { anexos?: RealinhamentoAnexo[] }).anexos || []).map((anexo) => ({
+          id: anexo.id,
+          nome: anexo.nome,
+          tipo: anexo.tipo,
+          tamanho: anexo.tamanho,
+          dataUpload: anexo.data_upload,
+          urlAssinada: anexo.url_assinada,
+        }))),
       })),
     [realinhamentosRaw],
   );
@@ -265,9 +284,20 @@ export function RealinhamentoPrecosModule() {
     setIsSubmitting(true);
     try {
       const itensValidos = itens.filter((item) => item.itemId && item.valorOriginal && item.valorSolicitado);
+      
+      let documentoId: string | undefined;
+
+      // Se houver arquivo, fazemos o upload uma única vez e pegamos o ID gerado
+      if (formData.arquivo) {
+        const tempRealinhamentoId = `temp-${formData.contratoId}-${Date.now()}`;
+        const anexoCriado = await uploadAnexoRealinhamento(tempRealinhamentoId, formData.arquivo, currentUser.id);
+        documentoId = anexoCriado.id;
+      }
+
       for (const item of itensValidos) {
         await solicitarRealinhamento({
           contrato_id: formData.contratoId,
+          documento_id: documentoId || null,
           item: `${item.itemId} - ${item.descricaoItem || item.itemId}`,
           valor_original: parseCurrencyInput(item.valorOriginal),
           valor_solicitado: parseCurrencyInput(item.valorSolicitado),
@@ -275,6 +305,7 @@ export function RealinhamentoPrecosModule() {
           responsavel_id: currentUser.id,
         });
       }
+      
       toast.success("Realinhamento registrado com sucesso!");
       setIsDialogOpen(false);
       resetFormulario();
@@ -340,16 +371,33 @@ export function RealinhamentoPrecosModule() {
     }
   };
 
-  const handleUploadAnexo = (_realinhamentoId: string, arquivo: File) => {
-    toast.info(`Upload de anexo pendente de integração na Fase 5: ${arquivo.name}`);
+  const handleUploadAnexo = async (realinhamentoId: string, arquivo: File) => {
+    if (!currentUser?.id) return;
+
+    await toast.promise(uploadAnexoRealinhamento(realinhamentoId, arquivo, currentUser.id), {
+      loading: `Enviando ${arquivo.name}...`,
+      success: async () => {
+        await loadData();
+        return "Anexo enviado com sucesso!";
+      },
+      error: (error) => (error instanceof Error ? error.message : "Não foi possível enviar o anexo."),
+    });
   };
 
-  const handleDownloadAnexo = (nomeArquivo: string) => {
-    toast.success(`Download iniciado: ${nomeArquivo}`);
+  const handleDownloadAnexo = (anexo: AnexoDocumento) => {
+    window.open(anexo.urlAssinada, "_blank", "noopener,noreferrer");
+    toast.success(`Download iniciado: ${anexo.nome}`);
   };
 
-  const handleRemoverAnexo = (_realinhamentoId: string, _anexoId: string) => {
-    toast.info("Remoção de anexo pendente de integração na Fase 5.");
+  const handleRemoverAnexo = async (_realinhamentoId: string, anexoId: string) => {
+    await toast.promise(deleteAnexoRealinhamento(anexoId), {
+      loading: "Removendo anexo...",
+      success: async () => {
+        await loadData();
+        return "Anexo removido com sucesso!";
+      },
+      error: (error) => (error instanceof Error ? error.message : "Não foi possível remover o anexo."),
+    });
   };
 
   const getAnexoIcon = (tipo: string) => {
@@ -577,7 +625,7 @@ export function RealinhamentoPrecosModule() {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <DropdownMenuItem className="flex-1 cursor-pointer" onClick={() => handleDownloadAnexo(anexo.nome)}>
+                             <DropdownMenuItem className="flex-1 cursor-pointer" onClick={() => handleDownloadAnexo(anexo)}>
                               <Download size={14} className="mr-2" />Baixar
                             </DropdownMenuItem>
                             <DropdownMenuItem className="flex-1 cursor-pointer text-red-600 focus:text-red-600" onClick={() => handleRemoverAnexo(realinhamento.id, anexo.id)}>

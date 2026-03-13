@@ -65,10 +65,18 @@ async function notificacaoJaExiste(
 
 export async function getNotificacoes(limit?: number): Promise<Notificacao[]> {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Usuário autenticado não encontrado.");
+  }
 
   let query = supabase
     .from("notificacoes")
     .select("*")
+    .eq("usuario_id", user.id)
     .order("criado_em", { ascending: false });
 
   if (typeof limit === "number") {
@@ -86,11 +94,19 @@ export async function getNotificacoes(limit?: number): Promise<Notificacao[]> {
 
 export async function marcarComoLida(id: string): Promise<Notificacao> {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error("Usuário autenticado não encontrado.");
+  }
 
   const { data, error } = await supabase
     .from("notificacoes")
     .update({ lida: true })
     .eq("id", id)
+    .eq("usuario_id", user.id)
     .select("*")
     .single();
 

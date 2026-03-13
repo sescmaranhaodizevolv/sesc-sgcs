@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import type { AtestadoFornecedor, Fornecedor } from "@/types";
+import type { AtestadoFornecedor, Fornecedor, RelatorioFiltros } from "@/types";
 
 const BUCKET_NAME = "documentos-fornecedores";
 
@@ -11,13 +11,27 @@ function getErrorMessage(error: { message?: string | null; details?: string | nu
   return error.details || error.message || "Ocorreu um erro ao processar a solicitacao";
 }
 
-export async function getFornecedores(): Promise<Fornecedor[]> {
+export async function getFornecedores(filtros?: RelatorioFiltros): Promise<Fornecedor[]> {
   const supabase = createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("fornecedores")
-    .select("*")
-    .order("data_cadastro", { ascending: false });
+    .select("*");
+
+  if (filtros) {
+    if (filtros.status && filtros.status !== "todos") {
+      query = query.eq("status", filtros.status);
+    }
+    const campoData = filtros.tipoData || "data_cadastro";
+    if (filtros.dataInicio) {
+      query = query.gte(campoData, filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      query = query.lte(campoData, filtros.dataFim);
+    }
+  }
+
+  const { data, error } = await query.order("data_cadastro", { ascending: false });
 
   if (error) {
     throw new Error(getErrorMessage(error));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,13 +46,18 @@ import { createFaq, deleteFaq, getFaqs, updateFaq, type FaqItem } from '@/servic
 import { toast } from "sonner";
 import { getDocumentos } from "@/services/documentosService";
 import type { DocumentoItem } from "@/services/documentosService";
+import { useAuth } from "@/contexts/AuthContext";
+import { atualizarStatusChamado, criarChamado, getChamados, type Chamado } from "@/services/suporteService";
+import { createClient } from "@/lib/supabase/client";
 
 interface CentralAjudaSuporteProps {
-  onNavigateToChamado?: (chamadoId: number) => void;
+  onNavigateToChamado?: (chamadoId: string) => void;
   currentProfile?: 'admin' | 'comprador' | 'requisitante' | 'gestora';
 }
 
 export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentProfile = 'admin' }: CentralAjudaSuporteProps) {
+  const { currentUser } = useAuth();
+  const supabase = useMemo(() => createClient(), []);
   const [activeTab, setActiveTab] = useState(currentProfile === 'requisitante' ? 'faq' : 'chamados');
   const [chamadoAberto, setChamadoAberto] = useState(false);
   const [isUploadDocumentoOpen, setIsUploadDocumentoOpen] = useState(false);
@@ -73,6 +78,8 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const [faqEmEdicao, setFaqEmEdicao] = useState<string | null>(null);
   const [isDeleteFaqDialogOpen, setIsDeleteFaqDialogOpen] = useState(false);
   const [faqToDelete, setFaqToDelete] = useState<string | null>(null);
+  const [chamados, setChamados] = useState<Chamado[]>([]);
+  const [novoChamadoForm, setNovoChamadoForm] = useState({ categoria: "", prioridade: "", rc: "", descricao: "", titulo: "" });
 
   // Filtros da tabela
   const [filtroStatus, setFiltroStatus] = useState('todos');
@@ -86,88 +93,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
   const podeGerenciarFaq: boolean = currentProfile === 'admin';
   const usuarioLogado = currentProfile === 'requisitante' ? 'Usuário autenticado' : currentProfile === 'comprador' ? 'Comprador' : currentProfile === 'gestora' ? 'Gestora' : 'Admin';
 
-  const chamadosRecentes = [
-    {
-      id: 1,
-      numero: 'Atendimento registrado',
-      titulo: 'Erro ao Exportar Relatório de Processos',
-      categoria: 'Sistema',
-      prioridade: 'Alta',
-      status: 'Em Andamento',
-      dataAbertura: '25/01/2024 14:30',
-      responsavel: 'Suporte TI',
-      usuarioRequisitante: 'João Silva',
-      perfilRequisitante: 'Comprador',
-      descricao: 'Ao tentar exportar o relatório de processos em formato Excel, o sistema apresenta erro 500 e não gera o arquivo.'
-    },
-    {
-      id: 2,
-      numero: 'Em acompanhamento',
-      titulo: 'Dúvida sobre Prorrogação de Contrato',
-      categoria: 'Dúvida',
-      prioridade: 'Média',
-      status: 'Aguardando Usuário',
-      dataAbertura: '24/01/2024 10:15',
-      responsavel: 'Ana Costa',
-      usuarioRequisitante: 'Maria Santos',
-      perfilRequisitante: 'Gestor de Contratos',
-      descricao: 'Preciso prorrogar o contrato CT-2023-045 com a empresa XYZ Ltda. Qual o procedimento correto no sistema?'
-    },
-    {
-      id: 3,
-      numero: 'Resolvido pelo suporte',
-      titulo: 'Solicitação de Novo Usuário',
-      categoria: 'Acesso/Perfil',
-      prioridade: 'Baixa',
-      status: 'Resolvido',
-      dataAbertura: '22/01/2024 09:00',
-      responsavel: 'Suporte TI',
-      usuarioRequisitante: 'Pedro Oliveira',
-      perfilRequisitante: 'Administrador',
-      descricao: 'Solicito criação de usuário para o novo funcionário Carlos Mendes.'
-    }
-  ];
-
   const [faqs, setFaqs] = useState<(FaqItem & { visualizacoes: number })[]>([]);
-
-  const meusChamados = [
-    {
-      id: 'chamado-recente-1',
-      titulo: 'Requisição parada há 15 dias',
-      categoria: 'Processo Parado',
-      prioridade: 'Alta',
-      status: 'Em Análise',
-      dataAbertura: '01/11/2025',
-      ultimaAtualizacao: '03/11/2025'
-    },
-    {
-      id: 'chamado-recente-2',
-      titulo: 'Dúvida sobre anexo de especificação técnica',
-      categoria: 'Dúvida',
-      prioridade: 'Média',
-      status: 'Respondido',
-      dataAbertura: '28/10/2025',
-      ultimaAtualizacao: '30/10/2025'
-    },
-    {
-      id: 'chamado-recente-3',
-      titulo: 'Solicitação de cancelamento de requisição',
-      categoria: 'Cancelamento',
-      prioridade: 'Média',
-      status: 'Resolvido',
-      dataAbertura: '20/10/2025',
-      ultimaAtualizacao: '22/10/2025'
-    },
-    {
-      id: 'chamado-recente-4',
-      titulo: 'Erro ao visualizar histórico da RC',
-      categoria: 'Problema Técnico',
-      prioridade: 'Baixa',
-      status: 'Resolvido',
-      dataAbertura: '15/10/2025',
-      ultimaAtualizacao: '16/10/2025'
-    }
-  ];
 
   useEffect(() => {
     const loadDocumentos = async () => {
@@ -202,6 +128,62 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     void loadFaqs();
   }, []);
 
+  useEffect(() => {
+    const loadChamados = async () => {
+      try {
+        setChamados(await getChamados());
+      } catch (error) {
+        toast.error('Erro ao carregar chamados', {
+          description: error instanceof Error ? error.message : 'Não foi possível carregar os chamados de suporte.',
+        });
+      }
+    };
+
+    void loadChamados();
+
+    const channel = supabase
+      .channel('chamados-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chamados' }, () => {
+        void loadChamados();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  const chamadosRecentes = useMemo(
+    () => chamados.map((chamado) => ({
+      id: chamado.id,
+      numero: `CHA-${chamado.id.slice(0, 8).toUpperCase()}`,
+      titulo: chamado.assunto,
+      categoria: chamado.categoria || 'Geral',
+      prioridade: chamado.prioridade,
+      status: chamado.status,
+      dataAbertura: new Date(chamado.criado_em).toLocaleString('pt-BR'),
+      responsavel: chamado.responsavel?.nome || 'Suporte',
+      usuarioRequisitante: chamado.usuario?.nome || usuarioLogado,
+      perfilRequisitante: currentProfile === 'requisitante' ? 'Requisitante' : currentProfile === 'comprador' ? 'Comprador' : currentProfile === 'gestora' ? 'Gestora' : 'Administrador',
+      descricao: chamado.descricao,
+      ultimaAtualizacao: new Date(chamado.atualizado_em).toLocaleString('pt-BR'),
+    })),
+    [chamados, currentProfile, usuarioLogado],
+  );
+
+  const meusChamados = useMemo(
+    () => chamados.filter((chamado) => !currentUser?.id || chamado.usuario_id === currentUser.id).map((chamado) => ({
+      id: chamado.id,
+      titulo: chamado.assunto,
+      categoria: chamado.categoria || 'Geral',
+      prioridade: chamado.prioridade,
+      status: chamado.status,
+      dataAbertura: new Date(chamado.criado_em).toLocaleDateString('pt-BR'),
+      ultimaAtualizacao: new Date(chamado.atualizado_em).toLocaleDateString('pt-BR'),
+    })),
+    [chamados, currentUser?.id],
+  );
+
   const estatisticasSuporte = {
     chamadosAbertos: chamadosRecentes.filter(c => c.status !== 'Resolvido').length,
     chamadosResolvidos: chamadosRecentes.filter(c => c.status === 'Resolvido').length,
@@ -225,15 +207,36 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
     return getBadgeMappingForPrioridade(prioridade);
   };
 
-  const abrirChamado = () => {
+  const abrirChamado = async () => {
+    if (!novoChamadoForm.descricao.trim() || !novoChamadoForm.categoria || !novoChamadoForm.prioridade) {
+      toast.error('Preencha categoria, prioridade e descrição do chamado.');
+      return;
+    }
+
     setChamadoAberto(true);
-    setTimeout(() => {
+    try {
+      const assunto = novoChamadoForm.titulo.trim() || `${novoChamadoForm.categoria} - ${novoChamadoForm.rc || 'Solicitação de suporte'}`;
+      const chamado = await criarChamado({
+        assunto,
+        descricao: novoChamadoForm.descricao,
+        categoria: novoChamadoForm.categoria,
+        prioridade: novoChamadoForm.prioridade,
+        processo_referencia: novoChamadoForm.rc || null,
+      });
+      setNovoChamadoForm({ categoria: '', prioridade: '', rc: '', descricao: '', titulo: '' });
+      toast.success('Chamado aberto com sucesso!', {
+        description: `Identificador: CHA-${chamado.id.slice(0, 8).toUpperCase()}`,
+      });
+    } catch (error) {
+      toast.error('Erro ao abrir chamado', {
+        description: error instanceof Error ? error.message : 'Não foi possível registrar o chamado.',
+      });
+    } finally {
       setChamadoAberto(false);
-      alert('Chamado aberto com sucesso! O identificador será exibido após a confirmação do suporte.');
-    }, 1000);
+    }
   };
 
-  const abrirDetalhesChamado = (chamado: typeof chamadosRecentes[0]) => {
+  const abrirDetalhesChamado = (chamado: (typeof chamadosRecentes)[number]) => {
     onNavigateToChamado(chamado.id);
   };
 
@@ -258,20 +261,16 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
 
   const uploadDocumento = () => {
     setDocumentoUploadando(true);
-    setTimeout(() => {
-      setDocumentoUploadando(false);
-      setIsUploadDocumentoOpen(false);
-      alert('Documento institucional adicionado com sucesso!');
-    }, 1500);
+    setDocumentoUploadando(false);
+    setIsUploadDocumentoOpen(false);
+    toast.success('Documento institucional adicionado com sucesso!');
   };
 
   const criarTreinamento = () => {
     setTreinamentoCriando(true);
-    setTimeout(() => {
-      setTreinamentoCriando(false);
-      setIsCriarTreinamentoOpen(false);
-      alert('Treinamento criado com sucesso!');
-    }, 1500);
+    setTreinamentoCriando(false);
+    setIsCriarTreinamentoOpen(false);
+    toast.success('Treinamento criado com sucesso!');
   };
 
   const filteredFaqRequisitante = faqs.filter((item) =>
@@ -445,7 +444,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <Label htmlFor="chamado-categoria">Categoria *</Label>
-                        <Select>
+                        <Select value={novoChamadoForm.categoria} onValueChange={(value) => setNovoChamadoForm((prev) => ({ ...prev, categoria: value }))}>
                           <SelectTrigger id="chamado-categoria">
                             <SelectValue placeholder="Selecione a categoria" />
                           </SelectTrigger>
@@ -461,7 +460,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="chamado-prioridade">Prioridade *</Label>
-                        <Select>
+                        <Select value={novoChamadoForm.prioridade} onValueChange={(value) => setNovoChamadoForm((prev) => ({ ...prev, prioridade: value }))}>
                           <SelectTrigger id="chamado-prioridade">
                             <SelectValue placeholder="Selecione a prioridade" />
                           </SelectTrigger>
@@ -475,7 +474,11 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="chamado-rc">RC Relacionada (Opcional)</Label>
-                      <Input id="chamado-rc" placeholder="Informe o número da RC, se houver" />
+                      <Input id="chamado-rc" placeholder="Informe o número da RC, se houver" value={novoChamadoForm.rc} onChange={(e) => setNovoChamadoForm((prev) => ({ ...prev, rc: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="chamado-titulo">Título do Chamado</Label>
+                      <Input id="chamado-titulo" placeholder="Resumo do chamado" value={novoChamadoForm.titulo} onChange={(e) => setNovoChamadoForm((prev) => ({ ...prev, titulo: e.target.value }))} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="chamado-descricao">Descrição Detalhada *</Label>
@@ -483,6 +486,8 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                         id="chamado-descricao"
                         placeholder="Descreva em detalhes o problema ou dúvida..."
                         rows={6}
+                        value={novoChamadoForm.descricao}
+                        onChange={(e) => setNovoChamadoForm((prev) => ({ ...prev, descricao: e.target.value }))}
                       />
                     </div>
                   </div>
@@ -567,7 +572,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => onNavigateToChamado(index + 1)}
+                              onClick={() => onNavigateToChamado(chamado.id)}
                             >
                               <Eye size={16} className="mr-1" />
                               Ver
@@ -730,7 +735,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                 <div className="grid gap-4 py-4 pb-6">
                   <div className="space-y-1.5">
                     <Label htmlFor="categoria">Categoria</Label>
-                    <Select>
+                    <Select value={novoChamadoForm.categoria} onValueChange={(value) => setNovoChamadoForm((prev) => ({ ...prev, categoria: value }))}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione a categoria" />
                       </SelectTrigger>
@@ -745,7 +750,7 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="prioridade">Prioridade</Label>
-                    <Select>
+                    <Select value={novoChamadoForm.prioridade} onValueChange={(value) => setNovoChamadoForm((prev) => ({ ...prev, prioridade: value }))}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione a prioridade" />
                       </SelectTrigger>
@@ -758,11 +763,11 @@ export function CentralAjudaSuporte({ onNavigateToChamado = () => {}, currentPro
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="titulo">Título do Chamado</Label>
-                    <Input id="titulo" placeholder="Descreva brevemente o problema" />
+                    <Input id="titulo" placeholder="Descreva brevemente o problema" value={novoChamadoForm.titulo} onChange={(e) => setNovoChamadoForm((prev) => ({ ...prev, titulo: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="descricao">Descrição Detalhada</Label>
-                    <Textarea id="descricao" placeholder="Descreva o problema em detalhes..." rows={4} />
+                    <Textarea id="descricao" placeholder="Descreva o problema em detalhes..." rows={4} value={novoChamadoForm.descricao} onChange={(e) => setNovoChamadoForm((prev) => ({ ...prev, descricao: e.target.value }))} />
                   </div>
                 </div>
               </div>

@@ -33,7 +33,10 @@ export function useIdleLogout({
 }: UseIdleLogoutOptions): void {
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const onIdleRef = useRef(onIdle);
-    onIdleRef.current = onIdle;
+
+    useEffect(() => {
+        onIdleRef.current = onIdle;
+    }, [onIdle]);
 
     const resetTimer = useCallback(() => {
         if (timerRef.current) {
@@ -57,10 +60,12 @@ export function useIdleLogout({
         );
 
         return () => {
-            if (timerRef.current) clearTimeout(timerRef.current);
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
             IDLE_EVENTS.forEach((event) =>
                 window.removeEventListener(event, handleActivity)
             );
         };
-    }, [enabled, resetTimer]);
+    }, [resetTimer, enabled]);
 }

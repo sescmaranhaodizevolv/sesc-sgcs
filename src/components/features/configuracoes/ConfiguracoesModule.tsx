@@ -8,7 +8,7 @@ import {
   CheckCircle,
   CheckCircle2,
   Database,
-  Edit, 
+  Edit,
   Globe,
   Link as LinkIcon,
   Plus,
@@ -123,7 +123,6 @@ export function ConfiguracoesModule({ perfil = "admin" }: ConfiguracoesProps) {
 
   const handleSalvar = () => {
     setNotificacaoSalva(true);
-    setTimeout(() => setNotificacaoSalva(false), 3000);
   };
 
   const salvarNovaApi = () => {

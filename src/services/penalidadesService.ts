@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { enviarNotificacao } from "@/services/notificacoesService";
+import type { RelatorioFiltros } from "@/types";
 
 function getErrorMessage(error: { message?: string | null; details?: string | null }) {
   return error.details || error.message || "Ocorreu um erro ao processar a solicitacao";
@@ -75,13 +76,27 @@ export interface RegistrarDesistenciaPayload {
   registrado_por?: string | null;
 }
 
-export async function getPenalidades(): Promise<Penalidade[]> {
+export async function getPenalidades(filtros?: RelatorioFiltros): Promise<Penalidade[]> {
   const supabase = createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("penalidades")
-    .select(PENALIDADES_SELECT)
-    .order("criado_em", { ascending: false });
+    .select(PENALIDADES_SELECT);
+
+  if (filtros) {
+    if (filtros.status && filtros.status !== "todos") {
+      query = query.eq("status", filtros.status);
+    }
+    const campoData = filtros.tipoData || "criado_em";
+    if (filtros.dataInicio) {
+      query = query.gte(campoData, filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      query = query.lte(campoData, filtros.dataFim);
+    }
+  }
+
+  const { data, error } = await query.order("criado_em", { ascending: false });
 
   if (error) {
     throw new Error(getErrorMessage(error));
@@ -203,9 +218,23 @@ export async function updatePenalidadeStatus(
 export async function vincularDocumentoPenalidade(penalidadeId: string, storagePath: string): Promise<void> {
   const supabase = createClient();
 
-  const { error } = await supabase
+  const { data: documento, error: documentoError } = await supabase
     .from("documentos")
-    .update({ caminho_arquivo: storagePath })
+    .select("id")
+    .eq("caminho_arquivo", storagePath)
+    .maybeSingle();
+
+  if (documentoError) {
+    throw new Error(getErrorMessage(documentoError));
+  }
+
+  if (!documento?.id) {
+    throw new Error("Documento não encontrado para vinculação da penalidade.");
+  }
+
+  const { error } = await supabase
+    .from("penalidades")
+    .update({ documento_id: documento.id })
     .eq("id", penalidadeId);
 
   if (error) {
@@ -213,13 +242,27 @@ export async function vincularDocumentoPenalidade(penalidadeId: string, storageP
   }
 }
 
-export async function getDesistencias(): Promise<Desistencia[]> {
+export async function getDesistencias(filtros?: RelatorioFiltros): Promise<Desistencia[]> {
   const supabase = createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("desistencias")
-    .select(DESISTENCIAS_SELECT)
-    .order("criado_em", { ascending: false });
+    .select(DESISTENCIAS_SELECT);
+
+  if (filtros) {
+    if (filtros.status && filtros.status !== "todos") {
+      query = query.eq("status", filtros.status);
+    }
+    const campoData = filtros.tipoData || "criado_em";
+    if (filtros.dataInicio) {
+      query = query.gte(campoData, filtros.dataInicio);
+    }
+    if (filtros.dataFim) {
+      query = query.lte(campoData, filtros.dataFim);
+    }
+  }
+
+  const { data, error } = await query.order("criado_em", { ascending: false });
 
   if (error) {
     throw new Error(getErrorMessage(error));

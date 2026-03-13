@@ -188,7 +188,7 @@ export function DetalhesProcessoModal({
           <DialogHeader className="pt-6">
             <DialogTitle>Detalhes do Processo</DialogTitle>
             <DialogDescription>
-              {processo.numero_requisicao || processo.numeroRequisicao || processo.id} - {empresaNome}
+              {processo.numero_requisicao || processo.numeroRequisicao || processo.numero_processo || "Processo"} - {empresaNome}
             </DialogDescription>
           </DialogHeader>
 
@@ -212,7 +212,7 @@ export function DetalhesProcessoModal({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-600">ID do Processo</p>
-                      <p className="text-base text-black mt-1">{processo.numero_processo || processo.numero_requisicao || processo.numeroRequisicao || processo.id}</p>
+                      <p className="text-base text-black mt-1">{processo.numero_processo || processo.numero_requisicao || processo.numeroRequisicao || "Não informado"}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">ID da Requisição</p>
